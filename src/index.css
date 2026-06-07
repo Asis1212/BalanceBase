@@ -1,0 +1,20 @@
+:root {
+  direction: rtl;
+  font-family: Noto Sans Hebrew, Segoe UI, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  
+  background: linear-gradient(135deg, rgb(253, 246, 236) 0%, rgb(253, 232, 216) 50%, rgb(245, 215, 197) 100%);
+  
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  padding-bottom: 80px;
+}
+
