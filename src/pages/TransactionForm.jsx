@@ -19,8 +19,8 @@ function TransactionForm({ setActivityPage, toast, setToast, addTransaction, edi
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState(
     isEdit
-      ? { type: editTx.type, date: editTx.date, amount: editTx.amount, category: editTx.category, person: editTx.person ?? null, description: editTx.description || "", paymentMethod: editTx.paymentMethod || "", recurring: !!editTx.recurring }
-      : { type: "expense", date: new Date().toISOString().slice(0, 10), recurring: recurringLocked ? true : false, person: null, paymentMethod: "", description: "" }
+      ? { type: editTx.type, date: editTx.date, amount: editTx.amount, category: editTx.category, person: editTx.person ?? null, description: editTx.description || "", paymentMethod: editTx.paymentMethod || "", recurring: !!editTx.recurring, installments: false, installmentCount: 2, installmentIndex: editTx.installmentIndex ?? null, installmentTotal: editTx.installmentTotal ?? null }
+      : { type: "expense", date: new Date().toISOString().slice(0, 10), recurring: recurringLocked ? true : false, person: null, paymentMethod: "", description: "", installments: false, installmentCount: 2 }
   );
 
   const currentCats = formData.type === "expense" ? expenseCategories : incomeCategories;
@@ -52,6 +52,29 @@ function TransactionForm({ setActivityPage, toast, setToast, addTransaction, edi
       replaceTransaction({ ...editTx, ...formData });
       showToast("✓ עודכן בהצלחה!");
       setActivityPage(recurringLocked ? "recurring" : "history");
+    } else if (!recurringLocked && formData.installments && formData.installmentCount >= 2) {
+      const count = parseInt(formData.installmentCount, 10);
+      const perPayment = Math.round((parseFloat(formData.amount) / count) * 100) / 100;
+      const groupId = crypto.randomUUID();
+      const [year, month, day] = formData.date.split("-").map(Number);
+      for (let i = 0; i < count; i++) {
+        const m = ((month - 1 + i) % 12) + 1;
+        const y = year + Math.floor((month - 1 + i) / 12);
+        const dateStr = `${y}-${String(m).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+        addTransaction({
+          id: crypto.randomUUID(),
+          ...formData,
+          amount: perPayment,
+          date: dateStr,
+          installmentId:    groupId,
+          installmentIndex: i + 1,
+          installmentTotal: count,
+          installments:     undefined,
+          installmentCount: undefined,
+        });
+      }
+      showToast(`✓ נוצרו ${count} תשלומים!`);
+      setActivityPage("dashboard");
     } else {
       addTransaction({ id: crypto.randomUUID(), ...formData });
       showToast("✓ נוסף בהצלחה!");
@@ -195,7 +218,7 @@ function TransactionForm({ setActivityPage, toast, setToast, addTransaction, edi
           {!recurringLocked && (
             <RecurringRow
               $on={!!formData.recurring}
-              onClick={() => setFormData(f => ({ ...f, recurring: !f.recurring }))}
+              onClick={() => setFormData(f => ({ ...f, recurring: !f.recurring, installments: false }))}
             >
               <RecurringLeft>
                 <span style={{ fontSize: 20 }}>🔄</span>
@@ -208,6 +231,59 @@ function TransactionForm({ setActivityPage, toast, setToast, addTransaction, edi
                 <ToggleThumb $on={!!formData.recurring} />
               </Toggle>
             </RecurringRow>
+          )}
+
+          {!recurringLocked && !isEdit && (
+            <RecurringRow
+              $on={!!formData.installments}
+              onClick={() => setFormData(f => ({ ...f, installments: !f.installments, recurring: false }))}
+            >
+              <RecurringLeft>
+                <span style={{ fontSize: 20 }}>💳</span>
+                <div>
+                  <RecurringTitle>תשלומים</RecurringTitle>
+                  <RecurringSub>פיצול לחודשים קדימה</RecurringSub>
+                </div>
+              </RecurringLeft>
+              <Toggle $on={!!formData.installments}>
+                <ToggleThumb $on={!!formData.installments} />
+              </Toggle>
+            </RecurringRow>
+          )}
+
+          {!recurringLocked && !isEdit && formData.installments && (
+            <>
+              <SectionLabel style={{ marginTop: 16 }}>מספר תשלומים</SectionLabel>
+              <InstallmentRow>
+                <InstallmentBtn
+                  onClick={() => setFormData(f => ({ ...f, installmentCount: Math.max(2, (f.installmentCount || 2) - 1) }))}
+                >−</InstallmentBtn>
+                <InstallmentCount>{formData.installmentCount || 2}</InstallmentCount>
+                <InstallmentBtn
+                  onClick={() => setFormData(f => ({ ...f, installmentCount: Math.min(36, (f.installmentCount || 2) + 1) }))}
+                >+</InstallmentBtn>
+              </InstallmentRow>
+              {formData.amount && parseFloat(formData.amount) > 0 && (
+                <InstallmentNote>
+                  {Math.round((parseFloat(formData.amount) / (formData.installmentCount || 2)) * 100) / 100} ₪ לתשלום
+                </InstallmentNote>
+              )}
+            </>
+          )}
+
+          {isEdit && editTx?.installmentTotal && (
+            <>
+              <SectionLabel style={{ marginTop: 16 }}>תשלום מספר</SectionLabel>
+              <InstallmentRow>
+                <InstallmentBtn
+                  onClick={() => setFormData(f => ({ ...f, installmentIndex: Math.max(1, (f.installmentIndex || 1) - 1) }))}
+                >−</InstallmentBtn>
+                <InstallmentCount>{formData.installmentIndex || editTx.installmentIndex} / {editTx.installmentTotal}</InstallmentCount>
+                <InstallmentBtn
+                  onClick={() => setFormData(f => ({ ...f, installmentIndex: Math.min(editTx.installmentTotal, (f.installmentIndex || editTx.installmentIndex) + 1) }))}
+                >+</InstallmentBtn>
+              </InstallmentRow>
+            </>
           )}
 
           <SaveBtn $type={formData.type} onClick={handleSave}>
@@ -543,4 +619,46 @@ const ToggleThumb = styled.div`
   background: white;
   box-shadow: 0 1px 4px rgba(0,0,0,0.3);
   transition: left 0.2s;
+`;
+
+const InstallmentRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  margin-bottom: 8px;
+`;
+
+const InstallmentBtn = styled.button`
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.08);
+  background: #1e2535;
+  color: #f0f4ff;
+  font-size: 22px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+  &:active { background: rgba(99,102,241,0.2); }
+`;
+
+const InstallmentCount = styled.div`
+  font-size: 28px;
+  font-weight: 900;
+  color: #a5b4fc;
+  min-width: 64px;
+  text-align: center;
+  letter-spacing: -1px;
+`;
+
+const InstallmentNote = styled.div`
+  text-align: center;
+  font-size: 13px;
+  color: #8b9dc3;
+  margin-top: 4px;
 `;

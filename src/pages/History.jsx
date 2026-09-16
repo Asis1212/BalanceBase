@@ -229,7 +229,7 @@ function History({ transactions, selectedMonth, cycleDay = 1, removeTransaction,
                       <TxTitle>{cat.label}</TxTitle>
                       {tx.description && <TxDesc>{tx.description}</TxDesc>}
                       <TxMeta>
-                        {tx.date.split("-").reverse().join("/")}{tx.person && tx.person !== "both" ? ` · ${tx.person === "personOne" ? p1Name : p2Name}` : ""}
+                        {tx.date.split("-").reverse().join("/")}{tx.person && tx.person !== "both" ? ` · ${tx.person === "personOne" ? p1Name : p2Name}` : ""}{tx.installmentTotal ? ` · תשלום ${tx.installmentIndex}/${tx.installmentTotal}` : ""}
                       </TxMeta>
                     </TxInfo>
                     <TxAmount $type={tx.type}>

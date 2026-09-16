@@ -27,16 +27,19 @@ export const budgets = pgTable('budgets', {
 });
 
 export const transactions = pgTable('transactions', {
-  id:            text('id').primaryKey(),
-  type:          text('type').notNull(), // 'income' | 'expense'
-  amount:        numeric('amount').notNull(),
-  categoryId:    text('category_id').references(() => categories.id, { onDelete: 'set null' }),
-  date:          text('date').notNull(),
-  description:   text('description').notNull().default(''),
-  person:        text('person'), // 'personOne' | 'personTwo' | 'both'
-  paymentMethod: text('payment_method').notNull().default(''),
-  recurring:     boolean('recurring').notNull().default(false),
-  createdAt:     timestamp('created_at').notNull().defaultNow(),
+  id:               text('id').primaryKey(),
+  type:             text('type').notNull(), // 'income' | 'expense'
+  amount:           numeric('amount').notNull(),
+  categoryId:       text('category_id').references(() => categories.id, { onDelete: 'set null' }),
+  date:             text('date').notNull(),
+  description:      text('description').notNull().default(''),
+  person:           text('person'), // 'personOne' | 'personTwo' | 'both'
+  paymentMethod:    text('payment_method').notNull().default(''),
+  recurring:        boolean('recurring').notNull().default(false),
+  installmentId:    text('installment_id'),    // shared UUID for all payments in a split
+  installmentIndex: integer('installment_index'), // 1-based: 1, 2, 3...
+  installmentTotal: integer('installment_total'), // total number of payments
+  createdAt:        timestamp('created_at').notNull().defaultNow(),
 });
 
 export const recurringTemplates = pgTable('recurring_templates', {
