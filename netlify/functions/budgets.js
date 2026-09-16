@@ -1,5 +1,5 @@
-import { db } from '../../../db/index.js';
-import { budgets } from '../../../db/schema.js';
+import { db } from '../db/index.js';
+import { budgets } from '../db/schema.js';
 import { json } from './_shared/helpers.js';
 
 export default async (req) => {
