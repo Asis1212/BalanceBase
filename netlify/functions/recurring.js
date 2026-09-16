@@ -1,5 +1,5 @@
-import { db } from '../db/index.js';
-import { recurringTemplates } from '../db/schema.js';
+import { db } from '../../db/index.js';
+import { recurringTemplates } from '../../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { json } from './_shared/helpers.js';
 
