@@ -1,121 +1,153 @@
 import styled from 'styled-components'
 
+const NAV_ITEMS = [
+  { val: "dashboard",  label: "בית",       icon: "🏠" },
+  { val: "history",    label: "היסטוריה",  icon: "📋" },
+  { val: "recurring",  label: "קבוע",      icon: "🔄" },
+  { val: "categories", label: "קטגוריות",  icon: "🏷️" },
+];
+
 function Navbar({activePage, onPageChange}) {
-    const left = { val: "history", label: "היסטוריה", icon: "📋" };
-    const right = { val: "dashboard", label: "דשבורד", icon: "📊" };
+  const leftItems  = [NAV_ITEMS[0], NAV_ITEMS[1]];
+  const rightItems = [NAV_ITEMS[2], NAV_ITEMS[3]];
 
-    return (
-        <Container>
-            <NavButton
-                className={right.val === activePage ? "active" : ""}
-                onClick={() => onPageChange(right.val)}
-            >
-                <BtnIcon>{right.icon}</BtnIcon>
-                <BtnLabel>{right.label}</BtnLabel>
-            </NavButton>
+  return (
+    <Container>
+      {leftItems.map((item) => (
+        <NavButton
+          key={item.val}
+          $active={activePage === item.val}
+          onClick={() => onPageChange(item.val)}
+        >
+          <BtnIcon>{item.icon}</BtnIcon>
+          <BtnLabel $active={activePage === item.val}>{item.label}</BtnLabel>
+          {activePage === item.val && <ActiveDot />}
+        </NavButton>
+      ))}
 
-            <AddButtonWrapper>
-                <AddButton
-                    className={activePage === "add" ? "active" : ""}
-                    onClick={() => onPageChange("add")}
-                >
-                    +
-                </AddButton>
-                <BtnLabel style={{ color: activePage === "add" ? "#d4500a" : "#aaa", marginTop: 4 }}>הוסף</BtnLabel>
-            </AddButtonWrapper>
+      <AddButtonWrapper>
+        <AddButton
+          $active={activePage === "add"}
+          onClick={() => onPageChange("add")}
+        >
+          <AddIcon $active={activePage === "add"}>+</AddIcon>
+        </AddButton>
+        <BtnLabel $active={activePage === "add"} style={{ marginTop: 4 }}>הוסף</BtnLabel>
+      </AddButtonWrapper>
 
-            <NavButton
-                className={left.val === activePage ? "active" : ""}
-                onClick={() => onPageChange(left.val)}
-            >
-                <BtnIcon>{left.icon}</BtnIcon>
-                <BtnLabel>{left.label}</BtnLabel>
-            </NavButton>
-        </Container>
-    )
+      {rightItems.map((item) => (
+        <NavButton
+          key={item.val}
+          $active={activePage === item.val}
+          onClick={() => onPageChange(item.val)}
+        >
+          <BtnIcon>{item.icon}</BtnIcon>
+          <BtnLabel $active={activePage === item.val}>{item.label}</BtnLabel>
+          {activePage === item.val && <ActiveDot />}
+        </NavButton>
+      ))}
+    </Container>
+  )
 }
 
 export default Navbar;
 
 const Container = styled.div`
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: white;
-    border-top: 1px solid #f0e8e0;
-    display: flex;
-    align-items: center;
-    box-shadow: 0 -4px 20px rgba(0,0,0,0.08);
-    padding-bottom: env(safe-area-inset-bottom);
-    height: 64px;
+  flex-shrink: 0;
+  background: rgba(13, 17, 23, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(99, 102, 241, 0.12);
+  display: flex;
+  align-items: center;
+  box-shadow: 0 -4px 32px rgba(0, 0, 0, 0.4);
+  padding-bottom: env(safe-area-inset-bottom);
+  height: 64px;
 `;
 
 const NavButton = styled.button`
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 3px;
-    border: none;
-    padding-block: 10px;
-    cursor: pointer;
-    font-family: inherit;
-    background: white;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border: none;
+  padding-block: 8px;
+  cursor: pointer;
+  font-family: inherit;
+  background: transparent;
+  border-radius: 14px;
+  margin: 6px 2px;
+  transition: background 0.15s;
+  position: relative;
 
-    &.active span {
-        color: #d4500a;
-        font-weight: 600;
-    }
+  &:active {
+    background: rgba(99, 102, 241, 0.08);
+    transform: scale(0.95);
+  }
+`;
+
+const ActiveDot = styled.div`
+  position: absolute;
+  bottom: -2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #6366f1;
+  box-shadow: 0 0 6px rgba(99, 102, 241, 0.8);
 `;
 
 const AddButtonWrapper = styled.div`
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    top: -18px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  top: -16px;
 `;
 
 const AddButton = styled.button`
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
-    border: none;
-    background: linear-gradient(135deg, #d4500a, #e8722a);
-    color: white;
-    font-size: 28px;
-    font-weight: 300;
-    cursor: pointer;
-    box-shadow: 0 4px 16px rgba(212, 80, 10, 0.45);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: transform 0.15s, box-shadow 0.15s;
-    line-height: 1;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  border: none;
+  background: ${({ $active }) =>
+    $active
+      ? "linear-gradient(135deg, #818cf8, #6366f1)"
+      : "linear-gradient(135deg, #6366f1, #8b5cf6)"};
+  cursor: pointer;
+  box-shadow: 0 6px 24px rgba(99, 102, 241, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s, box-shadow 0.15s;
 
-    &:active {
-        transform: scale(0.93);
-        box-shadow: 0 2px 8px rgba(212, 80, 10, 0.3);
-    }
+  &:active {
+    transform: scale(0.9);
+    box-shadow: 0 3px 12px rgba(99, 102, 241, 0.35);
+  }
+`;
 
-    &.active {
-        box-shadow: 0 0 0 4px rgba(212, 80, 10, 0.2), 0 4px 16px rgba(212, 80, 10, 0.45);
-    }
+const AddIcon = styled.span`
+  font-size: 28px;
+  font-weight: 300;
+  color: white;
+  line-height: 1;
+  margin-top: -2px;
 `;
 
 const BtnIcon = styled.span`
-    font-size: 20px;
-    color: #aaa;
-    transition: color 0.2s;
+  font-size: 18px;
+  transition: transform 0.15s;
 `;
 
 const BtnLabel = styled.span`
-    font-size: 11px;
-    font-weight: 400;
-    color: #aaa;
-    transition: color 0.2s;
+  font-size: 10px;
+  font-weight: ${({ $active }) => $active ? 700 : 400};
+  color: ${({ $active }) => $active ? "#a5b4fc" : "#4a5568"};
+  transition: color 0.2s;
 `;

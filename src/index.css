@@ -3,9 +3,7 @@
   font-family: Noto Sans Hebrew, Segoe UI, sans-serif;
   line-height: 1.5;
   font-weight: 400;
-  
-  background: linear-gradient(135deg, rgb(253, 246, 236) 0%, rgb(253, 232, 216) 50%, rgb(245, 215, 197) 100%);
-  
+
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -15,6 +13,25 @@
 body {
   min-height: 100vh;
   margin: 0;
-  padding-bottom: 80px;
+  background: #0d1117;
+  color: #f0f4ff;
+  overflow-x: hidden;
+  width: 100%;
 }
 
+* {
+  box-sizing: border-box;
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: #161b27;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #2d3748;
+  border-radius: 4px;
+}

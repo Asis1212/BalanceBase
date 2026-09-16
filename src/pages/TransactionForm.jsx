@@ -1,301 +1,538 @@
 import { useState } from "react";
 import styled from "styled-components";
 
-import LabelField from "../components/LabelField";
-import InputField from "../components/InputField";
+const PAYMENT_METHODS = [
+  { val: "credit",   label: "אשראי",   emoji: "💳" },
+  { val: "bit",      label: "ביט",     emoji: "📱" },
+  { val: "cash",     label: "מזומן",   emoji: "💵" },
+  { val: "transfer", label: "העברה",   emoji: "🏦" },
+  { val: "paybox",   label: "פייבוקס", emoji: "📲" },
+  { val: "check",    label: "צ׳ק",     emoji: "📝" },
+];
 
-const CATEGORIES = {
-  income: [
-    { id: "salary", label: "משכורת", emoji: "💼" },
-    { id: "present", label: "מתנה", emoji: "🎁" },
-    { id: "other_in", label: "אחר", emoji: "➕" },
-  ],
-  expense: [
-    { id: "food", label: "מזון וקניות", emoji: "🛒" },
-    { id: "housing", label: "דיור ושכירות", emoji: "🏠" },
-    { id: "transport", label: "דלק ותחבורה", emoji: "🚗" },
-    { id: "education", label: "לימודים", emoji: "📚" },
-    { id: "technology", label: "טכנולוגיה", emoji: "🤖" },
-    { id: "entertainment", label: "בילויים", emoji: "🎉" },
-    { id: "pharmacy", label: "פארם", emoji: "🏥" },
-    { id: "health", label: "בריאות", emoji: "💊" },
-    { id: "shopping", label: "שופינג", emoji: "🛍️" },
-    { id: "subscription", label: "מנויים", emoji: "🔔" },
-    { id: "gym", label: "חדר-כושר", emoji: "🏋" },
-    { id: "events", label: "אירועים", emoji: "💍" },
-    { id: "savings", label: "חיסכון", emoji: "🐷" },
-    { id: "other_ex", label: "אחר", emoji: "📦" },
-  ],
-};
-
-function Dashboard({setActivityPage, toast, setToast, addTransaction, updateCardsValues, editTx, replaceTransaction}) {
+function TransactionForm({ setActivityPage, toast, setToast, addTransaction, editTx, replaceTransaction, categories, profile, recurringLocked }) {
   const isEdit = !!editTx;
-  const [active, setActive] = useState("all");
+
+  const expenseCategories = categories?.filter(c => c.type === "expense") ?? [];
+  const incomeCategories  = categories?.filter(c => c.type === "income")  ?? [];
+
+  const [step, setStep] = useState(1);
   const [formData, setFormData] = useState(
     isEdit
-      ? { type: editTx.type, date: editTx.date, amount: editTx.amount, category: editTx.category, person: editTx.person, description: editTx.description || "" }
-      : { type: "expense", date: new Date().toISOString().slice(0, 10) }
+      ? { type: editTx.type, date: editTx.date, amount: editTx.amount, category: editTx.category, person: editTx.person ?? null, description: editTx.description || "", paymentMethod: editTx.paymentMethod || "", recurring: !!editTx.recurring }
+      : { type: "expense", date: new Date().toISOString().slice(0, 10), recurring: recurringLocked ? true : false, person: null, paymentMethod: "", description: "" }
   );
-  const [expenses, setExpenses] = useState([]);
 
-  const clickPartitionButtonHandler = (name) => {
-    setActive(name);
-  };
-
-  const changeFormType = (type) => {
-    setFormData({ type: type.val, date: new Date().toISOString().slice(0, 10)});
-  };
-
-  const handleAdd = () => {
-    const amount = parseFloat(formData.amount);
-    const person = formData.person;
-    if (!amount || amount <= 0) {
-      showToast("הכנס סכום תקין", "error");
-      return;
-    }
-    if (!person) {
-      showToast("יש לבחור למי שייכת הפעולה", "error");
-      return;
-    }
-
-    if (isEdit) {
-      replaceTransaction({ ...editTx, ...formData });
-      showToast("✓ עודכן בהצלחה!");
-      setActivityPage("history");
-    } else {
-      addTransaction({ id: crypto.randomUUID(), ...formData });
-      updateCardsValues(formData.type, Number(formData.amount));
-      showToast("✓ נוסף בהצלחה!");
-      setActivityPage("dashboard");
-    }
-  }
+  const currentCats = formData.type === "expense" ? expenseCategories : incomeCategories;
+  const p1Name = profile?.personOneName ?? "אלעד";
+  const p2Name = profile?.personTwoName ?? "נויה";
+  const backPage = recurringLocked ? "recurring" : (isEdit ? "history" : "dashboard");
+  const totalSteps = 3;
 
   const showToast = (msg, type = "success") => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 2500);
   };
 
+  const handleNext = () => {
+    if (step === 1 && (!formData.amount || parseFloat(formData.amount) <= 0)) {
+      showToast("הכנס סכום תקין", "error");
+      return;
+    }
+    setStep(s => s + 1);
+  };
+
+  const handleBack = () => {
+    if (step === 1) setActivityPage(backPage);
+    else setStep(s => s - 1);
+  };
+
+  const handleSave = () => {
+    if (isEdit) {
+      replaceTransaction({ ...editTx, ...formData });
+      showToast("✓ עודכן בהצלחה!");
+      setActivityPage(recurringLocked ? "recurring" : "history");
+    } else {
+      addTransaction({ id: crypto.randomUUID(), ...formData });
+      showToast("✓ נוסף בהצלחה!");
+      setActivityPage(recurringLocked ? "recurring" : "dashboard");
+    }
+  };
+
+  const pageTitle = isEdit ? "עריכת עסקה" : recurringLocked ? "הוראת קבע חדשה" : "עסקה חדשה";
+
   return (
-    <TransactionContainer>
-      <TransactionForm>
-        <TransactionFormHeaderWrapper>
-          <span className="transaction-form-header">{isEdit ? "עריכת עסקה" : "הוספת עסקה"}</span>
-        </TransactionFormHeaderWrapper>
+    <PageContainer>
+      {/* Header */}
+      <PageHeader>
+        <BackBtn onClick={handleBack}>{step === 1 ? "✕" : "‹"}</BackBtn>
+        <PageTitle>{pageTitle}</PageTitle>
+        <StepLabel>{step} / {totalSteps}</StepLabel>
+      </PageHeader>
 
-        {/* Type toggle */}
-        <ToggleButtonContainer>
-          {[
-            { val: "expense", label: "הוצאה 📉" },
-            { val: "income", label: "הכנסה 📈" },
-          ].map((formType) => (
-            <button
-              className="form-type-button"
-              key={formType.val}
-              style={{
-                background:
-                  formData.type === formType.val
-                    ? formType.val === "expense"
-                      ? "#d4500a"
-                      : "#27ae60"
-                    : "transparent",
-                color: formData.type === formType.val ? "white" : "#888",
-                transition: "all 0.2s",
-              }}
-              onClick={() => changeFormType(formType)}
-            >
-              {formType.label}
-            </button>
-          ))}
-        </ToggleButtonContainer>
+      {/* Progress bar */}
+      <ProgressTrack>
+        <ProgressFill style={{ width: `${(step / totalSteps) * 100}%` }} $type={formData.type} />
+      </ProgressTrack>
 
-        {/* Amount */}
-        <FieldContainer>
-          <LabelField labelText={"סכום (₪)"} />
-          <InputField
-            type={"number"}
-            placeholder={"0"}
-            fontSize={"20px"}
-            value={formData.amount ?? ""}
-            onChange={(e) =>
-              setFormData((f) => ({ ...f, amount: e.target.value }))
-            }
-          />
-        </FieldContainer>
-
-        {/* Category */}
-        <FieldContainer>
-          <LabelField labelText={"קטגוריה"} />
-          <CategoryWrapper>
-            {CATEGORIES[formData.type].map((cat) => (
-              <button
-                key={cat.id}
-                onClick={() => setFormData((f) => ({ ...f, category: cat.id }))}
-                className="category-button"
-                style={{
-                  borderColor:
-                    formData.category === cat.id ? "#d4500a" : "#f0e8e0",
-                  background:
-                    formData.category === cat.id ? "#fff5f0" : "white",
-                  fontWeight: formData.category === cat.id ? 700 : 400,
-                }}
-              >
-                <span className="category-icon">{cat.emoji}</span> {cat.label}
-              </button>
-            ))}
-          </CategoryWrapper>
-        </FieldContainer>
-
-        {/* Person */}
-        <FieldContainer>
-          <LabelField labelText={"של מי?"} />
-          <div style={{ display: "flex", gap: 8 }}>
+      {/* Step 1 — type + amount */}
+      {step === 1 && (
+        <Card>
+          <TypeToggle>
             {[
-              { val: "personOne", label: "🙋🏽 אלעד" },
-              { val: "personTwo", label: "🙋🏽‍♀️ נויה" },
-              { val: "both", label: "👫 שנינו" },
-            ].map((p) => (
-              <button
-                key={p.val}
-                onClick={() => setFormData((f) => ({ ...f, person: p.val }))}
-                style={{
-                  flex: 1,
-                  padding: "8px 4px",
-                  border: "2px solid",
-                  borderColor:
-                    formData.person === p.val ? "#d4500a" : "#f0e8e0",
-                  borderRadius: 12,
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                  background: formData.person === p.val ? "#fff5f0" : "white",
-                  color: "#2d2d2d",
-                  fontSize: 13,
-                  fontWeight: formData.person === p.val ? 700 : 400,
-                }}
+              { val: "expense", label: "הוצאה", icon: "📉" },
+              { val: "income",  label: "הכנסה", icon: "📈" },
+            ].map(t => (
+              <TypeBtn
+                key={t.val}
+                $active={formData.type === t.val}
+                $type={t.val}
+                onClick={() => setFormData(f => ({ ...f, type: t.val, category: "" }))}
               >
-                {p.label}
-              </button>
+                {t.icon} {t.label}
+              </TypeBtn>
             ))}
-          </div>
-        </FieldContainer>
+          </TypeToggle>
 
-        {/* Description */}
-        <FieldContainer>
-          <LabelField labelText={"תיאור (אופציונלי)"} />
-          <InputField
-            type={"text"}
-            placeholder={"לדוגמה: סופר אלפא..."}
+          <AmountSection>
+            <AmountPrefix>₪</AmountPrefix>
+            <AmountInput
+              type="number"
+              placeholder="0"
+              autoFocus
+              value={formData.amount ?? ""}
+              onChange={e => setFormData(f => ({ ...f, amount: e.target.value }))}
+            />
+          </AmountSection>
+
+          <NextBtn $type={formData.type} onClick={handleNext}>הבא ›</NextBtn>
+        </Card>
+      )}
+
+      {/* Step 2 — category + description */}
+      {step === 2 && (
+        <Card>
+          <SectionLabel>קטגוריה</SectionLabel>
+          <CategoryGrid>
+            {currentCats.map(cat => (
+              <CatBtn
+                key={cat.id}
+                $active={formData.category === cat.id}
+                onClick={() => setFormData(f => ({ ...f, category: cat.id }))}
+              >
+                <span style={{ fontSize: 20 }}>{cat.emoji}</span>
+                <CatLabel>{cat.label}</CatLabel>
+              </CatBtn>
+            ))}
+          </CategoryGrid>
+
+          <SectionLabel style={{ marginTop: 20 }}>תיאור (אופציונלי)</SectionLabel>
+          <DescInput
+            type="text"
+            placeholder="לדוגמה: סופר אלפא..."
             value={formData.description ?? ""}
-            onChange={(e) =>
-              setFormData((f) => ({ ...f, description: e.target.value }))
-            }
+            onChange={e => setFormData(f => ({ ...f, description: e.target.value }))}
           />
-        </FieldContainer>
 
-        {/* Date */}
-        <FieldContainer>
-          <LabelField labelText={"תאריך"} />
-          <InputField
-            type={"date"}
-            value={`${formData.date}`}
-            fontSize={"14px"}
-            onChange={(e) =>
-              setFormData((f) => ({ ...f, date: e.target.value }))
-            }
+          <NextBtn $type={formData.type} onClick={handleNext}>הבא ›</NextBtn>
+        </Card>
+      )}
+
+      {/* Step 3 — person + date + payment + recurring + save */}
+      {step === 3 && (
+        <Card>
+          <SectionLabel>של מי?</SectionLabel>
+          <PersonRow>
+            {[
+              { val: "personOne", label: p1Name, emoji: "🙋🏽" },
+              { val: "personTwo", label: p2Name, emoji: "🙋🏽‍♀️" },
+            ].map(p => (
+              <PersonBtn
+                key={p.val}
+                $active={formData.person === p.val || formData.person === "both"}
+                onClick={() => setFormData(f => {
+                  if (f.person === "both") return { ...f, person: p.val === "personOne" ? "personTwo" : "personOne" };
+                  if (f.person === p.val) return { ...f, person: null };
+                  if (f.person && f.person !== p.val) return { ...f, person: "both" };
+                  return { ...f, person: p.val };
+                })}
+              >
+                <span style={{ fontSize: 22 }}>{p.emoji}</span>
+                <span>{p.label}</span>
+              </PersonBtn>
+            ))}
+          </PersonRow>
+
+          <SectionLabel style={{ marginTop: 20 }}>תאריך</SectionLabel>
+          <DateInput
+            type="date"
+            value={formData.date}
+            onChange={e => setFormData(f => ({ ...f, date: e.target.value }))}
           />
-        </FieldContainer>
 
-        <AddTranscationButton onClick={handleAdd}>
-          {isEdit ? "שמור שינויים ✓" : "הוסף עסקה ✓"}
-        </AddTranscationButton>
-      </TransactionForm>
-    </TransactionContainer>
+          <SectionLabel style={{ marginTop: 20 }}>אמצעי תשלום</SectionLabel>
+          <PaymentGrid>
+            {PAYMENT_METHODS.map(pm => (
+              <PayBtn
+                key={pm.val}
+                $active={formData.paymentMethod === pm.val}
+                onClick={() => setFormData(f => ({ ...f, paymentMethod: f.paymentMethod === pm.val ? "" : pm.val }))}
+              >
+                <span>{pm.emoji}</span>
+                <span>{pm.label}</span>
+              </PayBtn>
+            ))}
+          </PaymentGrid>
+
+          {!recurringLocked && (
+            <RecurringRow
+              $on={!!formData.recurring}
+              onClick={() => setFormData(f => ({ ...f, recurring: !f.recurring }))}
+            >
+              <RecurringLeft>
+                <span style={{ fontSize: 20 }}>🔄</span>
+                <div>
+                  <RecurringTitle>חוזר כל חודש</RecurringTitle>
+                  <RecurringSub>יתווסף אוטומטית</RecurringSub>
+                </div>
+              </RecurringLeft>
+              <Toggle $on={!!formData.recurring}>
+                <ToggleThumb $on={!!formData.recurring} />
+              </Toggle>
+            </RecurringRow>
+          )}
+
+          <SaveBtn $type={formData.type} onClick={handleSave}>
+            {isEdit ? "שמור שינויים ✓" : "הוסף עסקה ✓"}
+          </SaveBtn>
+        </Card>
+      )}
+    </PageContainer>
   );
 }
 
-export default Dashboard;
+export default TransactionForm;
 
-const TransactionContainer = styled.div`
-  padding: 16px 20px;
+const PageContainer = styled.div`
+  padding: 16px 16px 24px;
+  width: 100%;
+  box-sizing: border-box;
 `;
 
-const TransactionForm = styled.div`
-  background: white;
-  border-radius: 20px;
-  padding: 16px;
-  box-shadow: rgba(0, 0, 0, 0.06) 0px 4px 20px;
-`;
-
-const TransactionFormHeaderWrapper = styled.div`
+const PageHeader = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 12px;
-
-  .transaction-form-header {
-    font-weight: 700;
-    font-size: 18px;
-    color: rgb(45, 45, 45);
-  }
 `;
 
-const ToggleButtonContainer = styled.div`
+const BackBtn = styled.button`
+  background: rgba(255,255,255,0.06);
+  border: none;
+  color: #8b9dc3;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 18px;
   display: flex;
-  background: #f5f0ea;
+  align-items: center;
+  justify-content: center;
+  font-family: inherit;
+`;
+
+const PageTitle = styled.div`
+  font-size: 18px;
+  font-weight: 800;
+  color: #f0f4ff;
+`;
+
+const StepLabel = styled.div`
+  font-size: 13px;
+  color: #4a5568;
+  font-weight: 600;
+  width: 36px;
+  text-align: center;
+`;
+
+const ProgressTrack = styled.div`
+  height: 3px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 2px;
+  margin-bottom: 16px;
+  overflow: hidden;
+`;
+
+const ProgressFill = styled.div`
+  height: 100%;
+  border-radius: 2px;
+  transition: width 0.3s ease;
+  background: ${({ $type }) =>
+    $type === "expense"
+      ? "linear-gradient(90deg, #6366f1, #f472b6)"
+      : "linear-gradient(90deg, #6366f1, #22d3a5)"};
+`;
+
+const Card = styled.div`
+  background: #161b27;
+  border-radius: 24px;
+  padding: 20px 16px;
+  border: 1px solid rgba(255,255,255,0.05);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+  width: 100%;
+  box-sizing: border-box;
+`;
+
+const TypeToggle = styled.div`
+  display: flex;
+  background: #0d1117;
   border-radius: 14px;
   padding: 4px;
-  margin-bottom: 16px;
-
-  .form-type-button {
-    flex: 1;
-    padding: 10px 0;
-    border: none;
-    border-radius: 10px;
-    cursor: pointer;
-    font-family: inherit;
-    font-size: 14px;
-    font-weight: 600;
-    transition: all 0.2s;
-  }
+  margin-bottom: 20px;
+  gap: 4px;
 `;
 
-const FieldContainer = styled.div`
-  margin-bottom: 14px;
+const TypeBtn = styled.button`
+  flex: 1;
+  padding: 10px 0;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s;
+  background: ${({ $active, $type }) =>
+    $active
+      ? $type === "expense"
+        ? "linear-gradient(135deg, #f472b6, #e11d48)"
+        : "linear-gradient(135deg, #22d3a5, #059669)"
+      : "rgba(255,255,255,0.05)"};
+  color: ${({ $active }) => $active ? "white" : "#8b9dc3"};
+  box-shadow: ${({ $active }) => $active ? "0 4px 14px rgba(0,0,0,0.3)" : "none"};
 `;
 
-const CategoryWrapper = styled.div`
+const AmountSection = styled.div`
+  display: flex;
+  align-items: center;
+  background: #0d1117;
+  border-radius: 16px;
+  padding: 0 16px;
+  margin-bottom: 24px;
+  border: 2px solid rgba(255,255,255,0.08);
+  direction: ltr;
+`;
+
+const AmountPrefix = styled.div`
+  font-size: 28px;
+  font-weight: 700;
+  color: #8b9dc3;
+  margin-right: 8px;
+`;
+
+const AmountInput = styled.input`
+  flex: 1;
+  padding: 20px 0;
+  border: none;
+  background: transparent;
+  font-size: 42px;
+  font-weight: 900;
+  color: #f0f4ff;
+  text-align: left;
+  outline: none;
+  font-family: inherit;
+  letter-spacing: -1px;
+  min-width: 0;
+
+  &::placeholder { color: #2d3748; }
+`;
+
+const SectionLabel = styled.div`
+  font-size: 12px;
+  font-weight: 600;
+  color: #8b9dc3;
+  margin-bottom: 10px;
+  letter-spacing: 0.3px;
+`;
+
+const CategoryGrid = styled.div`
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-
-  .category-button {
-    padding: 10px 12px;
-    border: 2px solid;
-    border-radius: 12px;
-    cursor: pointer;
-    font-family: inherit;
-    color: #2d2d2d;
-    font-size: 13px;
-    text-align: right;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-
-    .category-icon {
-      font-size: 18px;
-    }
-  }
 `;
 
-const AddTranscationButton = styled.button`
+const CatBtn = styled.button`
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 2px solid ${({ $active }) => $active ? "#6366f1" : "rgba(255,255,255,0.06)"};
+  border-radius: 12px;
+  background: ${({ $active }) => $active ? "rgba(99,102,241,0.15)" : "#1e2535"};
+  cursor: pointer;
+  font-family: inherit;
+  text-align: right;
+  transition: all 0.15s;
+`;
+
+const CatLabel = styled.span`
+  font-size: 13px;
+  font-weight: 500;
+  color: #c7d2e8;
+  flex: 1;
+  text-align: right;
+`;
+
+const DescInput = styled.input`
   width: 100%;
-  padding: 14px;
+  background: #1e2535;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  padding: 12px 14px;
+  color: #f0f4ff;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+
+  &::placeholder { color: #4a5568; }
+  &:focus { border-color: rgba(99,102,241,0.4); }
+`;
+
+const PersonRow = styled.div`
+  display: flex;
+  gap: 10px;
+`;
+
+const PersonBtn = styled.button`
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 6px;
+  border: 2px solid ${({ $active }) => $active ? "#6366f1" : "rgba(255,255,255,0.06)"};
+  border-radius: 14px;
+  background: ${({ $active }) => $active ? "rgba(99,102,241,0.15)" : "#1e2535"};
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: ${({ $active }) => $active ? 700 : 400};
+  color: ${({ $active }) => $active ? "#a5b4fc" : "#8b9dc3"};
+  transition: all 0.15s;
+`;
+
+const DateInput = styled.input`
+  width: 100%;
+  background: #1e2535;
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 12px;
+  padding: 12px 14px;
+  color: #f0f4ff;
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  box-sizing: border-box;
+
+  &:focus { border-color: rgba(99,102,241,0.4); }
+`;
+
+const PaymentGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+`;
+
+const PayBtn = styled.button`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 4px;
+  border: 2px solid ${({ $active }) => $active ? "#6366f1" : "rgba(255,255,255,0.06)"};
+  border-radius: 12px;
+  background: ${({ $active }) => $active ? "rgba(99,102,241,0.15)" : "#1e2535"};
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: ${({ $active }) => $active ? 700 : 400};
+  color: ${({ $active }) => $active ? "#a5b4fc" : "#8b9dc3"};
+  transition: all 0.15s;
+`;
+
+const NextBtn = styled.button`
+  width: 100%;
+  padding: 15px;
   border: none;
   border-radius: 14px;
-  background: linear-gradient(135deg, #d4500a, #e8722a);
+  background: ${({ $type }) =>
+    $type === "expense"
+      ? "linear-gradient(135deg, #6366f1, #8b5cf6)"
+      : "linear-gradient(135deg, #22d3a5, #059669)"};
   color: white;
   font-size: 16px;
   font-weight: 700;
   cursor: pointer;
   font-family: inherit;
-  box-shadow: 0px 4px 16px rgba(212,80,10,0.4);
+  margin-top: 20px;
+  box-shadow: 0 6px 24px rgba(99,102,241,0.3);
+  transition: transform 0.15s;
+
+  &:active { transform: scale(0.98); }
+`;
+
+const SaveBtn = styled(NextBtn)``;
+
+const RecurringRow = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border: 2px solid ${({ $on }) => $on ? "rgba(99,102,241,0.3)" : "rgba(255,255,255,0.06)"};
+  border-radius: 14px;
+  background: ${({ $on }) => $on ? "rgba(99,102,241,0.08)" : "#1e2535"};
+  cursor: pointer;
+  margin-top: 16px;
+  user-select: none;
+  transition: all 0.15s;
+`;
+
+const RecurringLeft = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 10px;
+`;
+
+const RecurringTitle = styled.div`
+  font-weight: 600;
+  font-size: 13px;
+  color: #f0f4ff;
+`;
+
+const RecurringSub = styled.div`
+  font-size: 11px;
+  color: #8b9dc3;
+  margin-top: 1px;
+`;
+
+const Toggle = styled.div`
+  width: 44px;
+  height: 24px;
+  border-radius: 12px;
+  background: ${({ $on }) => $on ? "#6366f1" : "#2d3748"};
+  position: relative;
+  transition: background 0.2s;
+  flex-shrink: 0;
+`;
+
+const ToggleThumb = styled.div`
+  position: absolute;
+  top: 3px;
+  left: ${({ $on }) => $on ? "23px" : "3px"};
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: white;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  transition: left 0.2s;
 `;

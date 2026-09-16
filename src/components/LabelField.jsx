@@ -8,7 +8,10 @@ export default LabelField;
 
 const Label = styled.label`
   display: block;
-  font-size: 13px;
-  color: #888;
-  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #8b9dc3;
+  margin-bottom: 7px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
 `;

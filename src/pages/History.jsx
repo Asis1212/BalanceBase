@@ -1,55 +1,90 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import styled from "styled-components";
+import { isInCycle } from "../utils/monthUtils";
+import { exportHTMLReport } from "../utils/exportReport";
 
-const CATEGORIES = {
-  income: [
-    { id: "salary", label: "משכורת", emoji: "💼" },
-    { id: "present", label: "מתנה", emoji: "🎁" },
-    { id: "other_in", label: "אחר", emoji: "➕" },
-  ],
-  expense: [
-    { id: "food", label: "מזון וקניות", emoji: "🛒" },
-    { id: "housing", label: "דיור ושכירות", emoji: "🏠" },
-    { id: "transport", label: "דלק ותחבורה", emoji: "🚗" },
-    { id: "education", label: "לימודים", emoji: "📚" },
-    { id: "technology", label: "טכנולוגיה", emoji: "🤖" },
-    { id: "entertainment", label: "בילויים", emoji: "🎉" },
-    { id: "pharmacy", label: "פארם", emoji: "🏥" },
-    { id: "health", label: "בריאות", emoji: "💊" },
-    { id: "shopping", label: "שופינג", emoji: "🛍️" },
-    { id: "subscription", label: "מנויים", emoji: "🔔" },
-    { id: "gym", label: "חדר-כושר", emoji: "🏋" },
-    { id: "events", label: "אירועים", emoji: "💍" },
-    { id: "savings", label: "חיסכון", emoji: "🐷" },
-    { id: "other_ex", label: "אחר", emoji: "📦" },
-  ],
-};
+function SwipeableRow({ onDelete, children }) {
+  const [offset, setOffset] = useState(0);
+  const [swiping, setSwiping] = useState(false);
+  const startX = useRef(null);
+  const THRESHOLD = 80;
 
-function History({ transactions, selectedMonth, removeTransaction, restoreTransaction, setActivityPage }) {
-  const [active, setActive] = useState("both");
+  const onPointerDown = (e) => { startX.current = e.clientX; setSwiping(true); };
+  const onPointerMove = (e) => {
+    if (startX.current === null) return;
+    const dx = startX.current - e.clientX;
+    setOffset(Math.max(0, Math.min(dx, 120)));
+  };
+  const onPointerUp = () => {
+    if (offset >= THRESHOLD) onDelete();
+    else setOffset(0);
+    startX.current = null;
+    setSwiping(false);
+  };
+
+  return (
+    <SwipeWrapper>
+      <SwipeDeleteBg $visible={offset > 10}><span>🗑️</span></SwipeDeleteBg>
+      <SwipeContent
+        style={{ transform: `translateX(${offset}px)` }}
+        $swiping={swiping}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerLeave={onPointerUp}
+      >
+        {children}
+      </SwipeContent>
+    </SwipeWrapper>
+  );
+}
+
+function History({ transactions, selectedMonth, cycleDay = 1, removeTransaction, restoreTransaction, setActivityPage, categories, profile }) {  const [active, setActive] = useState("both");
+  const [typeTab, setTypeTab] = useState("all");
   const [undoItem, setUndoItem] = useState(null);
   const [undoTimer, setUndoTimer] = useState(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState({ search: "", dateFrom: "", dateTo: "", category: "", minAmount: "", maxAmount: "" });
+
+  const allCategories = categories ?? [];
+  const expenseCategories = allCategories.filter(c => c.type === "expense");
+  const incomeCategories  = allCategories.filter(c => c.type === "income");
+
+  const setFilter = (key, val) => setFilters((f) => ({ ...f, [key]: val }));
+  const hasActiveFilters = Object.values(filters).some((v) => v !== "");
+  const clearFilters = () => setFilters({ search: "", dateFrom: "", dateTo: "", category: "", minAmount: "", maxAmount: "" });
 
   const getCatInfo = (type, categoryId) => {
-    const list = CATEGORIES[type] ?? [];
+    const list = type === "income" ? incomeCategories : expenseCategories;
     return list.find((c) => c.id === categoryId) ?? { emoji: "📦", label: categoryId };
   };
 
   const formatCurrency = (amount) =>
     new Intl.NumberFormat("he-IL", { style: "currency", currency: "ILS", maximumFractionDigits: 0 }).format(amount);
 
-  const monthFilteredTransactions = selectedMonth
-    ? transactions.filter((tx) => {
-        const txDate = new Date(tx.date);
-        const txMonthLabel = new Intl.DateTimeFormat("he-IL", { month: "long", year: "numeric" }).format(txDate);
-        return txMonthLabel === selectedMonth;
-      })
+  const monthFiltered = selectedMonth
+    ? transactions.filter((tx) => isInCycle(tx.date, selectedMonth, cycleDay))
     : transactions;
 
-  const filteredTransactions =
+  const personFiltered =
     active === "both"
-      ? monthFilteredTransactions
-      : monthFilteredTransactions.filter((tx) => tx.person === active || tx.person === "both");
+      ? monthFiltered
+      : monthFiltered.filter((tx) => tx.person === active || tx.person === "both");
+
+  const filteredTransactions = personFiltered.filter((tx) => {
+    if (typeTab !== "all" && tx.type !== typeTab) return false;
+    const cat = getCatInfo(tx.type, tx.category);
+    if (filters.search) {
+      const q = filters.search.toLowerCase();
+      if (!cat.label.toLowerCase().includes(q) && !(tx.description ?? "").toLowerCase().includes(q)) return false;
+    }
+    if (filters.dateFrom && tx.date < filters.dateFrom) return false;
+    if (filters.dateTo && tx.date > filters.dateTo) return false;
+    if (filters.category && tx.category !== filters.category) return false;
+    if (filters.minAmount && Number(tx.amount) < Number(filters.minAmount)) return false;
+    if (filters.maxAmount && Number(tx.amount) > Number(filters.maxAmount)) return false;
+    return true;
+  });
 
   const handleDelete = (tx) => {
     removeTransaction(tx.id);
@@ -68,44 +103,140 @@ function History({ transactions, selectedMonth, removeTransaction, restoreTransa
 
   useEffect(() => () => { if (undoTimer) clearTimeout(undoTimer); }, []);
 
+  const exportCSV = () => {
+    exportHTMLReport({
+      transactions: monthFiltered,
+      categories: allCategories,
+      profile,
+      cycleDay,
+      selectedMonth,
+    });
+  };
+
+  const p1Name = profile?.personOneName ?? "אלעד";
+  const p2Name = profile?.personTwoName ?? "נויה";
+
   return (
-    <div>
-      <PartitionWrapper>
-        <SectionBtn className={active === "both" ? "clicked" : ""} onClick={() => setActive("both")}>ביחד ❤️</SectionBtn>
-        <SectionBtn className={active === "personOne" ? "clicked" : ""} onClick={() => setActive("personOne")}>אלעד 🙋🏽</SectionBtn>
-        <SectionBtn className={active === "personTwo" ? "clicked" : ""} onClick={() => setActive("personTwo")}>נויה 🙋🏽‍♀️</SectionBtn>
-      </PartitionWrapper>
+    <Page>
+      <FilterRow>
+        {[
+          { val: "both",      label: `הכל` },
+          { val: "personOne", label: `${p1Name} 🙋🏽` },
+          { val: "personTwo", label: `${p2Name} 🙋🏽‍♀️` },
+        ].map((item) => (
+          <FilterChip key={item.val} $active={active === item.val} onClick={() => setActive(item.val)}>
+            {item.label}
+          </FilterChip>
+        ))}
+      </FilterRow>
+
+      <TypeTabsRow>
+        {[
+          { val: "all",     label: "הכל" },
+          { val: "expense", label: "הוצאות 📉" },
+          { val: "income",  label: "הכנסות 📈" },
+        ].map((tab) => (
+          <TypeTab
+            key={tab.val}
+            $active={typeTab === tab.val}
+            $type={tab.val}
+            onClick={() => setTypeTab(tab.val)}
+          >
+            {tab.label}
+          </TypeTab>
+        ))}
+      </TypeTabsRow>
 
       <Wrapper>
         <Card>
           <CardHeader>
-            <span>כל העסקאות</span>
-            {selectedMonth && <MonthBadge>{selectedMonth}</MonthBadge>}
+            <CardTitle>כל העסקאות</CardTitle>
+            <CardActions>
+              {selectedMonth && <MonthBadge>{selectedMonth}</MonthBadge>}
+              <IconBtn $active={showFilters || hasActiveFilters} onClick={() => setShowFilters(v => !v)}>
+                🔍 {hasActiveFilters ? "פעיל" : "סינון"}
+              </IconBtn>
+              {filteredTransactions.length > 0 && (
+                <IconBtn onClick={exportCSV}>📊 דוח</IconBtn>
+              )}
+            </CardActions>
           </CardHeader>
 
+          {showFilters && (
+            <FilterPanel>
+              <FilterInput
+                type="text"
+                placeholder="חיפוש לפי שם / תיאור..."
+                value={filters.search}
+                onChange={(e) => setFilter("search", e.target.value)}
+              />
+              <FilterInputRow>
+                <FilterInput
+                  type="date"
+                  value={filters.dateFrom}
+                  onChange={(e) => setFilter("dateFrom", e.target.value)}
+                  style={{ textAlign: "left" }}
+                />
+                <FilterInput
+                  type="date"
+                  value={filters.dateTo}
+                  onChange={(e) => setFilter("dateTo", e.target.value)}
+                  style={{ textAlign: "left" }}
+                />
+              </FilterInputRow>
+              <FilterSelect
+                value={filters.category}
+                onChange={(e) => setFilter("category", e.target.value)}
+              >
+                <option value="">כל הקטגוריות</option>
+                {allCategories.map((c) => (
+                  <option key={c.id} value={c.id}>{c.emoji} {c.label}</option>
+                ))}
+              </FilterSelect>
+              <FilterInputRow>
+                <FilterInput
+                  type="number"
+                  placeholder="מינימום ₪"
+                  value={filters.minAmount}
+                  onChange={(e) => setFilter("minAmount", e.target.value)}
+                />
+                <FilterInput
+                  type="number"
+                  placeholder="מקסימום ₪"
+                  value={filters.maxAmount}
+                  onChange={(e) => setFilter("maxAmount", e.target.value)}
+                />
+              </FilterInputRow>
+              {hasActiveFilters && (
+                <ClearBtn onClick={clearFilters}>נקה סינון ✕</ClearBtn>
+              )}
+            </FilterPanel>
+          )}
+
           {!filteredTransactions.length ? (
-            <EmptyContent>
-              <span className="no-expenses-icon">🌟</span>
-              <span>אין עסקאות</span>
-            </EmptyContent>
+            <EmptyState>
+              <span style={{ fontSize: 48, marginBottom: 8 }}>🌟</span>
+              <span style={{ color: "#4a5568" }}>אין עסקאות</span>
+            </EmptyState>
           ) : (
             filteredTransactions.map((tx) => {
               const cat = getCatInfo(tx.type, tx.category);
               return (
-                <TransactionRow key={tx.id}>
-                  <TransactionIcon $type={tx.type}>{cat.emoji}</TransactionIcon>
-                  <TransactionInfo onClick={() => setActivityPage({ page: "edit", tx })}>
-                    <TransactionTitle>{cat.label}</TransactionTitle>
-                    {tx.description && <TransactionDescription>{tx.description}</TransactionDescription>}
-                    <TransactionMeta>
-                      {tx.date} · {tx.person === "both" ? "שנינו" : tx.person === "personOne" ? "אלעד" : "נויה"}
-                    </TransactionMeta>
-                  </TransactionInfo>
-                  <TransactionAmount $type={tx.type}>
-                    {tx.type === "income" ? "+" : "-"}{formatCurrency(tx.amount)}
-                  </TransactionAmount>
-                  <DeleteBtn onClick={() => handleDelete(tx)}>🗑️</DeleteBtn>
-                </TransactionRow>
+                <SwipeableRow key={tx.id} onDelete={() => handleDelete(tx)}>
+                  <TxRow>
+                    <TxIcon $type={tx.type}>{cat.emoji}</TxIcon>
+                    <TxInfo onClick={() => setActivityPage({ page: "edit", tx })}>
+                      <TxTitle>{cat.label}</TxTitle>
+                      {tx.description && <TxDesc>{tx.description}</TxDesc>}
+                      <TxMeta>
+                        {tx.date.split("-").reverse().join("/")}{tx.person && tx.person !== "both" ? ` · ${tx.person === "personOne" ? p1Name : p2Name}` : ""}
+                      </TxMeta>
+                    </TxInfo>
+                    <TxAmount $type={tx.type}>
+                      {tx.type === "income" ? "+" : "-"}{formatCurrency(tx.amount)}
+                    </TxAmount>
+                  </TxRow>
+                </SwipeableRow>
               );
             })
           )}
@@ -118,102 +249,233 @@ function History({ transactions, selectedMonth, removeTransaction, restoreTransa
           <UndoBtn onClick={handleUndo}>בטל</UndoBtn>
         </UndoToast>
       )}
-    </div>
+    </Page>
   );
 }
 
 export default History;
 
-const PartitionWrapper = styled.div`
-  margin-block: 20px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 15px;
+const Page = styled.div`
+  padding: 8px 0 16px;
 `;
 
-const SectionBtn = styled.button`
-  padding: 6px 14px;
-  border-radius: 20px;
-  border: none;
-  cursor: pointer;
-  font-size: 15px;
-  font-family: inherit;
-  background: rgba(255, 255, 255, 0.7);
-  color: rgb(85, 85, 85);
-  font-weight: 400;
-  box-shadow: none;
-  transition: 0.2s;
+const FilterRow = styled.div`
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 12px 16px 8px;
+`;
 
-  &.clicked {
-    background: rgb(212, 80, 10) !important;
-    color: white !important;
-    font-weight: 700 !important;
-    box-shadow: rgba(212, 80, 10, 0.3) 0px 4px 12px !important;
-  }
+const FilterChip = styled.button`
+  padding: 7px 14px;
+  border-radius: 20px;
+  border: 2px solid ${({ $active }) => $active ? "#6366f1" : "rgba(255,255,255,0.06)"};
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+  background: ${({ $active }) => $active ? "rgba(99,102,241,0.2)" : "#161b27"};
+  color: ${({ $active }) => $active ? "#a5b4fc" : "#4a5568"};
+  font-weight: ${({ $active }) => $active ? 700 : 400};
+  transition: all 0.18s;
+`;
+
+const TypeTabsRow = styled.div`
+  display: flex;
+  margin: 0 16px 12px;
+  background: #161b27;
+  border-radius: 14px;
+  padding: 4px;
+  border: 1px solid rgba(255,255,255,0.04);
+`;
+
+const TypeTab = styled.button`
+  flex: 1;
+  padding: 8px 0;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.18s;
+  background: ${({ $active, $type }) =>
+    $active
+      ? $type === "expense"
+        ? "linear-gradient(135deg, #f472b6, #e11d48)"
+        : $type === "income"
+          ? "linear-gradient(135deg, #22d3a5, #059669)"
+          : "linear-gradient(135deg, #6366f1, #8b5cf6)"
+      : "transparent"};
+  color: ${({ $active }) => $active ? "white" : "#4a5568"};
 `;
 
 const Wrapper = styled.div`
-  padding: 0 20px 16px;
+  padding: 0 16px 16px;
 `;
 
 const Card = styled.div`
-  background: white;
+  background: #161b27;
   border-radius: 20px;
-  padding: 16px;
-  box-shadow: rgba(0, 0, 0, 0.06) 0px 4px 20px;
+  padding: 18px 16px;
+  border: 1px solid rgba(255,255,255,0.04);
+  box-shadow: 0 2px 16px rgba(0,0,0,0.2);
 `;
 
 const CardHeader = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 14px;
+`;
+
+const CardTitle = styled.div`
   font-weight: 700;
-  font-size: 18px;
-  color: rgb(45, 45, 45);
-  margin-bottom: 12px;
+  font-size: 17px;
+  color: #f0f4ff;
+`;
+
+const CardActions = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 6px;
 `;
 
 const MonthBadge = styled.span`
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 500;
-  color: #d4500a;
-  background: #fef0ea;
-  padding: 3px 10px;
-  border-radius: 12px;
+  color: #a5b4fc;
+  background: rgba(99,102,241,0.15);
+  padding: 3px 8px;
+  border-radius: 10px;
 `;
 
-const EmptyContent = styled.div`
+const IconBtn = styled.button`
+  background: ${({ $active }) => $active ? "rgba(99,102,241,0.25)" : "rgba(255,255,255,0.06)"};
+  color: ${({ $active }) => $active ? "#a5b4fc" : "#8b9dc3"};
+  border: none;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 5px 10px;
+  border-radius: 10px;
+  transition: all 0.15s;
+`;
+
+const FilterPanel = styled.div`
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: #0d1117;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.04);
+`;
+
+const FilterInputRow = styled.div`
+  display: flex;
+  gap: 8px;
+`;
+
+const FilterInput = styled.input`
+  flex: 1;
+  padding: 8px 12px;
+  border: 2px solid rgba(255,255,255,0.06);
+  border-radius: 10px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  color: #f0f4ff;
+  background: #161b27;
+  text-align: right;
+  width: 100%;
+
+  &::placeholder { color: #2d3748; }
+  &:focus { border-color: #6366f1; }
+  &[type="date"]::-webkit-calendar-picker-indicator { filter: invert(0.7); }
+`;
+
+const FilterSelect = styled.select`
+  flex: 1;
+  padding: 8px 12px;
+  border: 2px solid rgba(255,255,255,0.06);
+  border-radius: 10px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  color: #f0f4ff;
+  background: #161b27;
+  width: 100%;
+
+  &:focus { border-color: #6366f1; }
+
+  option { background: #161b27; }
+`;
+
+const ClearBtn = styled.button`
+  background: rgba(244,114,182,0.15);
+  border: none;
+  color: #f472b6;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 6px 14px;
+  border-radius: 10px;
+  align-self: flex-start;
+`;
+
+const EmptyState = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 24px 0;
-  color: rgb(187, 187, 187);
-
-  .no-expenses-icon {
-    font-size: 55px;
-  }
+  padding: 32px 0;
 `;
 
-const TransactionRow = styled.div`
+const SwipeWrapper = styled.div`
+  position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  &:last-child { border-bottom: none; }
+`;
+
+const SwipeDeleteBg = styled.div`
+  position: absolute;
+  inset: 0;
+  background: rgba(244,114,182,0.15);
+  display: flex;
+  align-items: center;
+  padding-inline-start: 20px;
+  opacity: ${({ $visible }) => $visible ? 1 : 0};
+  transition: opacity 0.15s;
+  font-size: 20px;
+`;
+
+const SwipeContent = styled.div`
+  position: relative;
+  background: #161b27;
+  transition: ${({ $swiping }) => $swiping ? "none" : "transform 0.25s ease"};
+  touch-action: pan-y;
+  cursor: grab;
+`;
+
+const TxRow = styled.div`
   display: flex;
   align-items: center;
   padding: 10px 0;
-  border-bottom: 1px solid #f5f0ea;
   gap: 12px;
-
-  &:last-child {
-    border-bottom: none;
-  }
+  background: #161b27;
 `;
 
-const TransactionIcon = styled.div`
-  width: 38px;
-  height: 38px;
+const TxIcon = styled.div`
+  width: 40px;
+  height: 40px;
   border-radius: 12px;
-  background: ${({ $type }) => $type === "income" ? "#e8f8f0" : "#fef0ea"};
+  background: ${({ $type }) =>
+    $type === "income" ? "rgba(34,211,165,0.12)" : "rgba(99,102,241,0.12)"};
   display: flex;
   align-items: center;
   justify-content: center;
@@ -221,57 +483,41 @@ const TransactionIcon = styled.div`
   flex-shrink: 0;
 `;
 
-const TransactionInfo = styled.div`
+const TxInfo = styled.div`
   flex: 1;
   min-width: 0;
   cursor: pointer;
 `;
 
-const TransactionTitle = styled.div`
+const TxTitle = styled.div`
   font-weight: 600;
   font-size: 14px;
-  color: #2d2d2d;
+  color: #f0f4ff;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 `;
 
-const TransactionDescription = styled.div`
+const TxDesc = styled.div`
   font-size: 12px;
-  font-weight: 400;
-  color: #888;
+  color: #8b9dc3;
   margin-top: 1px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 `;
 
-const TransactionMeta = styled.div`
+const TxMeta = styled.div`
   font-size: 11px;
-  color: #aaa;
+  color: #4a5568;
   margin-top: 2px;
 `;
 
-const TransactionAmount = styled.div`
+const TxAmount = styled.div`
   font-weight: 700;
   font-size: 15px;
-  color: ${({ $type }) => $type === "income" ? "#27ae60" : "#d4500a"};
+  color: ${({ $type }) => $type === "income" ? "#22d3a5" : "#f472b6"};
   flex-shrink: 0;
-`;
-
-const DeleteBtn = styled.button`
-  background: #fff0ee;
-  border: none;
-  cursor: pointer;
-  font-size: 15px;
-  padding: 7px 9px;
-  border-radius: 10px;
-  flex-shrink: 0;
-  transition: background 0.2s;
-
-  &:hover {
-    background: #ffd5cc;
-  }
 `;
 
 const UndoToast = styled.div`
@@ -279,25 +525,28 @@ const UndoToast = styled.div`
   bottom: 90px;
   left: 50%;
   transform: translateX(-50%);
-  background: #2d2d2d;
+  background: #1e2535;
+  border: 1px solid rgba(99,102,241,0.2);
   color: white;
-  padding: 10px 16px;
-  border-radius: 20px;
+  padding: 11px 18px;
+  border-radius: 24px;
   font-size: 14px;
   display: flex;
   align-items: center;
-  gap: 12px;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+  gap: 14px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   z-index: 1000;
+  white-space: nowrap;
 `;
 
 const UndoBtn = styled.button`
-  background: none;
+  background: rgba(99,102,241,0.2);
   border: none;
-  color: #e8722a;
+  color: #a5b4fc;
   font-weight: 700;
-  font-size: 14px;
+  font-size: 13px;
   cursor: pointer;
   font-family: inherit;
-  padding: 0;
+  padding: 4px 10px;
+  border-radius: 10px;
 `;

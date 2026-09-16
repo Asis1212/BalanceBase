@@ -1,7 +1,11 @@
 {
   "permissions": {
     "allow": [
-      "Bash(claude *)"
+      "Bash(claude *)",
+      "Bash(npm run *)",
+      "Bash(npx vite *)",
+      "Bash(node *)",
+      "Bash(npm install *)"
     ]
   }
 }

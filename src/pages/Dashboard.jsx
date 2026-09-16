@@ -1,337 +1,619 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import styled from "styled-components";
+import { isInCycle, buildCycleList } from "../utils/monthUtils";
 
-const CATEGORIES = {
-  income: [
-    { id: "salary", label: "משכורת", emoji: "💼" },
-    { id: "present", label: "מתנה", emoji: "🎁" },
-    { id: "other_in", label: "אחר", emoji: "➕" },
-  ],
-  expense: [
-    { id: "food", label: "מזון וקניות", emoji: "🛒" },
-    { id: "housing", label: "דיור ושכירות", emoji: "🏠" },
-    { id: "transport", label: "דלק ותחבורה", emoji: "🚗" },
-    { id: "education", label: "לימודים", emoji: "📚" },
-    { id: "technology", label: "טכנולוגיה", emoji: "🤖" },
-    { id: "entertainment", label: "בילויים", emoji: "🎉" },
-    { id: "pharmacy", label: "פארם", emoji: "🏥" },
-    { id: "health", label: "בריאות", emoji: "💊" },
-    { id: "shopping", label: "שופינג", emoji: "🛍️" },
-    { id: "subscription", label: "מנויים", emoji: "🔔" },
-    { id: "gym", label: "חדר-כושר", emoji: "🏋" },
-    { id: "events", label: "אירועים", emoji: "💍" },
-    { id: "savings", label: "חיסכון", emoji: "🐷" },
-    { id: "other_ex", label: "אחר", emoji: "📦" },
-  ],
-};
+const DEFAULT_BUDGET = 1000; // ₪ per category default
 
-function Dashboard({transactions, setActivityPage}) {
-  const [active, setActive] = useState("both");
+// Draws a small SVG donut showing pct utilization (0-100+)
+function MiniDonut({ pct, color, size = 36 }) {
+  const R = 13;
+  const CX = size / 2;
+  const CY = size / 2;
+  const circumference = 2 * Math.PI * R;
+  const clamped = Math.min(pct, 100);
+  const dash = (clamped / 100) * circumference;
+
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      <circle cx={CX} cy={CY} r={R} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={4} />
+      <circle
+        cx={CX} cy={CY} r={R}
+        fill="none"
+        stroke={color}
+        strokeWidth={4}
+        strokeDasharray={`${dash} ${circumference}`}
+        strokeLinecap="round"
+        transform={`rotate(-90 ${CX} ${CY})`}
+        style={{ transition: "stroke-dasharray 0.5s ease" }}
+      />
+    </svg>
+  );
+}
+
+const CAT_COLORS = [
+  "#6366f1","#f472b6","#22d3a5","#fbbf24","#38bdf8","#a78bfa",
+  "#fb7185","#34d399","#f97316","#60a5fa","#e879f9","#4ade80",
+  "#facc15","#818cf8","#2dd4bf","#fb923c",
+];
+
+function Dashboard({ transactions, allTransactions, setActivityPage, budgets, setBudgets, selectedMonth, setSelectedMonth, cycleDay = 1, categories, profile }) {
+  const [showBudgetModal, setShowBudgetModal] = useState(false);
+  const [budgetDraft, setBudgetDraft] = useState({});
+
+  const expenseCategories = categories?.filter(c => c.type === "expense") ?? [];
+  const incomeCategories  = categories?.filter(c => c.type === "income")  ?? [];
 
   const getCatInfo = (type, categoryId) => {
-    const list = CATEGORIES[type] ?? [];
+    const list = type === "income" ? incomeCategories : expenseCategories;
     return list.find((c) => c.id === categoryId) ?? { emoji: "📦", label: categoryId };
   };
-  
+
   const formatCurrency = (amount) =>
     new Intl.NumberFormat("he-IL", { style: "currency", currency: "ILS", maximumFractionDigits: 0 }).format(amount);
 
-  const filteredTransactions =
-    active === "both"
-      ? transactions
-      : transactions.filter((tx) => tx.person === active || tx.person === "both");
+  // Month-filtered transactions (all people)
+  const monthTx = useMemo(() =>
+    selectedMonth
+      ? transactions.filter(tx => isInCycle(tx.date, selectedMonth, cycleDay))
+      : transactions,
+    [transactions, selectedMonth, cycleDay]
+  );
 
-  const expenseByCategory = CATEGORIES.expense
-    .map((cat) => ({
-      ...cat,
-      total: filteredTransactions
-        .filter((tx) => tx.type === "expense" && tx.category === cat.id)
-        .reduce((sum, tx) => sum + Number(tx.amount), 0),
-    }))
-    .filter((cat) => cat.total > 0);
+  // Per-category spent this month
+  const catData = useMemo(() =>
+    expenseCategories.map((cat, i) => {
+      const spent = monthTx
+        .filter(tx => tx.type === "expense" && tx.category === cat.id)
+        .reduce((s, tx) => s + Number(tx.amount), 0);
+      const limit  = budgets[cat.id] ?? DEFAULT_BUDGET;
+      const pct    = limit > 0 ? (spent / limit) * 100 : 0;
+      const status = pct >= 100 ? "over" : pct >= 80 ? "warn" : "ok";
+      const color  = CAT_COLORS[i % CAT_COLORS.length];
+      return { ...cat, spent, limit, pct, status, color };
+    }),
+    [expenseCategories, monthTx, budgets]
+  );
 
-  const totalExpense = expenseByCategory.reduce((sum, cat) => sum + cat.total, 0);
+  const activeCats = catData.filter(c => c.spent > 0);
+
+  // 5 most recent expense transactions this month
+  const recentExpenses = useMemo(() =>
+    monthTx
+      .filter(tx => tx.type === "expense")
+      .sort((a, b) => b.date.localeCompare(a.date))
+      .slice(0, 5),
+    [monthTx]
+  );
+
+  const p1Name = profile?.personOneName ?? "אלעד";
+  const p2Name = profile?.personTwoName ?? "נויה";
+
+  // Month navigation
+  const monthsList = useMemo(() => buildCycleList(12, cycleDay), [cycleDay]);
+
+  const currentIdx = monthsList.indexOf(selectedMonth);
+  const canGoBack    = currentIdx < monthsList.length - 1;
+  const canGoForward = currentIdx > 0;
+
+  const goBack    = () => canGoBack    && setSelectedMonth(monthsList[currentIdx + 1]);
+  const goForward = () => canGoForward && setSelectedMonth(monthsList[currentIdx - 1]);
+
+  const openBudgetModal = () => {
+    setBudgetDraft(
+      Object.fromEntries(expenseCategories.map(c => [c.id, budgets[c.id] ?? DEFAULT_BUDGET]))
+    );
+    setShowBudgetModal(true);
+  };
+
+  const saveBudgets = () => {
+    const cleaned = {};
+    for (const [k, v] of Object.entries(budgetDraft)) {
+      const n = parseFloat(v);
+      if (n > 0) cleaned[k] = n;
+    }
+    setBudgets(cleaned);
+    setShowBudgetModal(false);
+  };
 
   return (
-    <div>
-      <PartitionWrapper>
-        <SectionBtn
-          className={`${active === "both" ? "clicked" : ""}`}
-          onClick={() => setActive("both")}
-        >
-          ביחד ❤️
-        </SectionBtn>
-        <SectionBtn
-          className={`${active === "personOne" ? "clicked" : ""}`}
-          onClick={() => setActive("personOne")}
-        >
-          אלעד 🙋🏽
-        </SectionBtn>
-        <SectionBtn
-          className={`${active === "personTwo" ? "clicked" : ""}`}
-          onClick={() => setActive("personTwo")}
-        >
-          נויה 🙋🏽‍♀️
-        </SectionBtn>
-      </PartitionWrapper>
+    <Page>
 
-      {expenseByCategory.length > 0 && (
-        <CategoryBreakdownWrapper>
-          <CategoryBreakdownCard>
-            <CategoryBreakdownHeader>פירוט הוצאות לפי קטגוריה</CategoryBreakdownHeader>
-            {expenseByCategory.map((cat) => (
-              <CategoryRow key={cat.id}>
-                <CategoryRowLabel>
-                  <CategoryLabel>{cat.emoji} {cat.label}</CategoryLabel>
-                  <CategoryAmount>{formatCurrency(cat.total)}</CategoryAmount>
-                </CategoryRowLabel>
-                <ProgressBarBg>
-                  <ProgressBarFill style={{ width: `${Math.min(100, (cat.total / totalExpense) * 100)}%` }} />
-                </ProgressBarBg>
-              </CategoryRow>
+      {/* Month switcher */}
+      <MonthSwitcher>
+        <MonthArrow onClick={goBack} $disabled={!canGoBack}>‹</MonthArrow>
+        <MonthLabel>{selectedMonth}</MonthLabel>
+        <MonthArrow onClick={goForward} $disabled={!canGoForward}>›</MonthArrow>
+      </MonthSwitcher>
+
+      {/* Category donuts grid */}
+      {activeCats.length > 0 ? (
+        <Section>
+          <SectionHeader>
+            <SectionTitle>ניצול תקציב — {selectedMonth}</SectionTitle>
+            <ActionBtn onClick={openBudgetModal}>⚙️ תקציב</ActionBtn>
+          </SectionHeader>
+          <DonutGrid>
+            {activeCats.map(cat => (
+              <DonutCard key={cat.id} $status={cat.status}>
+                <DonutWrapper>
+                  <MiniDonut
+                    pct={cat.pct}
+                    size={36}
+                    color={
+                      cat.status === "over" ? "#f472b6" :
+                      cat.status === "warn" ? "#fbbf24" :
+                      cat.color
+                    }
+                  />
+                  <DonutInner>
+                    <DonutEmoji>{cat.emoji}</DonutEmoji>
+                  </DonutInner>
+                </DonutWrapper>
+                <DonutLabel>{cat.label}</DonutLabel>
+                <DonutAmountRow>
+                  <DonutSpent $status={cat.status}>{formatCurrency(cat.spent)}</DonutSpent>
+                  <DonutLimit>/ {formatCurrency(cat.limit)}</DonutLimit>
+                </DonutAmountRow>
+                <DonutPct $status={cat.status}>
+                  {Math.round(cat.pct)}%{cat.status === "over" ? "⚠️" : ""}
+                </DonutPct>
+              </DonutCard>
             ))}
-          </CategoryBreakdownCard>
-        </CategoryBreakdownWrapper>
+          </DonutGrid>
+        </Section>
+      ) : (
+        <Section>
+          <SectionHeader>
+            <SectionTitle>ניצול תקציב — {selectedMonth}</SectionTitle>
+            <ActionBtn onClick={openBudgetModal}>⚙️ תקציב</ActionBtn>
+          </SectionHeader>
+          <EmptyState>
+            <span style={{ fontSize: 44, marginBottom: 8 }}>📊</span>
+            <span style={{ color: "#4a5568", fontSize: 14 }}>אין הוצאות החודש עדיין</span>
+          </EmptyState>
+        </Section>
       )}
 
-      <ElaborationBillingWrapper>
-        <ElaborationBilling>
-          <ElaborationBillingHeaderWrapper>
-            <div className="elaboration-billings-header">עסקאות אחרונות</div>
-            {transactions.length > 0 && (
-              <ShowAllButton onClick={() => setActivityPage("history")}>הכל →</ShowAllButton>
-            )}
-          </ElaborationBillingHeaderWrapper>
+      {/* Recent expenses — pop card */}
+      <RecentSection>
+        <RecentHeader>
+          <RecentTitle>הוצאות אחרונות</RecentTitle>
+          {recentExpenses.length > 0 && (
+            <RecentAllBtn onClick={() => setActivityPage("history")}>הכל →</RecentAllBtn>
+          )}
+        </RecentHeader>
 
-          <ElaborationBillingDataWrapper>
-            
-            {!filteredTransactions.length ? (
-              <EmptyContent>
-                <span className="no-expenses-icon">🌟</span>
-                <span>אין עסקאות</span>
-              </EmptyContent>
-            ) : (
-              filteredTransactions.slice(0, 5).map((tx) => {
-                const cat = getCatInfo(tx.type, tx.category);
-                return (
-                  <TransactionRow key={tx.id}>
-                    <TransactionIcon $type={tx.type}>{cat.emoji}</TransactionIcon>
-                    <TransactionInfo>
-                      <TransactionTitle>{cat.label}</TransactionTitle>
-                      {tx.description && <TransactionDescription>{tx.description}</TransactionDescription>}
-                      <TransactionMeta>
-                        {tx.date} · {tx.person === "both" ? "שנינו" : tx.person === "personOne" ? "אלעד" : "נויה"}
-                      </TransactionMeta>
-                    </TransactionInfo>
-                    <TransactionAmount $type={tx.type}>
-                      {tx.type === "income" ? "+" : "-"}{formatCurrency(tx.amount)}
-                    </TransactionAmount>
-                  </TransactionRow>
-                );
-              })
-            )}
-            
-          </ElaborationBillingDataWrapper>
-        </ElaborationBilling>
-      </ElaborationBillingWrapper>
-    </div>
+        {recentExpenses.length === 0 ? (
+          <EmptyState>
+            <span style={{ fontSize: 44, marginBottom: 8 }}>🌟</span>
+            <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 14 }}>אין הוצאות החודש</span>
+          </EmptyState>
+        ) : (
+          recentExpenses.map((tx, idx) => {
+            const cat = getCatInfo(tx.type, tx.category);
+            const catIdx = expenseCategories.findIndex(c => c.id === tx.category);
+            const dotColor = catIdx >= 0 ? CAT_COLORS[catIdx % CAT_COLORS.length] : "#6366f1";
+            return (
+              <RecentRow key={tx.id} $last={idx === recentExpenses.length - 1}>
+                <RecentIcon style={{ background: `${dotColor}22` }}>
+                  <span style={{ fontSize: 20 }}>{cat.emoji}</span>
+                </RecentIcon>
+                <RecentInfo>
+                  <RecentTxTitle>
+                    {cat.label}
+                    {tx.recurring && <span style={{ marginInlineStart: 6, fontSize: 11, opacity: 0.7 }}>🔄</span>}
+                  </RecentTxTitle>
+                  <RecentMeta>
+                    {tx.date.split("-").reverse().join("/")}
+                    {tx.description ? ` · ${tx.description}` : ""}
+                    {" · "}{tx.person === "both" ? `${p1Name} · ${p2Name}` : tx.person === "personOne" ? p1Name : p2Name}
+                  </RecentMeta>
+                </RecentInfo>
+                <RecentAmount>−{formatCurrency(tx.amount)}</RecentAmount>
+              </RecentRow>
+            );
+          })
+        )}
+      </RecentSection>
+
+      {/* Budget modal */}
+      {showBudgetModal && (
+        <ModalOverlay onClick={() => setShowBudgetModal(false)}>
+          <ModalSheet onClick={(e) => e.stopPropagation()}>
+            <ModalHeader>
+              <span>הגדרת תקציב לקטגוריות</span>
+              <CloseBtn onClick={() => setShowBudgetModal(false)}>✕</CloseBtn>
+            </ModalHeader>
+            <ModalBody>
+              {expenseCategories.map((cat) => (
+                <BudgetRow key={cat.id}>
+                  <BudgetLabel>{cat.emoji} {cat.label}</BudgetLabel>
+                  <BudgetInput
+                    type="number"
+                    placeholder={`${DEFAULT_BUDGET}`}
+                    value={budgetDraft[cat.id] ?? ""}
+                    onChange={(e) => setBudgetDraft((d) => ({ ...d, [cat.id]: e.target.value }))}
+                  />
+                </BudgetRow>
+              ))}
+            </ModalBody>
+            <ModalFooter>
+              <SaveBtn onClick={saveBudgets}>שמור תקציב ✓</SaveBtn>
+            </ModalFooter>
+          </ModalSheet>
+        </ModalOverlay>
+      )}
+    </Page>
   );
 }
 
 export default Dashboard;
 
-const PartitionWrapper = styled.div`
-  margin-block: 20px;
+// ── Month switcher ────────────────────────────────────────────────────────────
+
+const MonthSwitcher = styled.div`
   display: flex;
-  justify-content: center;
   align-items: center;
-  gap: 15px;
+  justify-content: center;
+  gap: 0;
+  margin: 4px 16px 14px;
+  background: #161b27;
+  border-radius: 16px;
+  border: 1px solid rgba(99,102,241,0.15);
+  overflow: hidden;
 `;
 
-const SectionBtn = styled.button`
-  padding: 6px 14px;
-  border-radius: 20px;
+const MonthArrow = styled.button`
+  width: 44px;
+  height: 44px;
   border: none;
-  cursor: pointer;
-  font-size: 15px;
+  background: transparent;
+  color: ${({ $disabled }) => $disabled ? "#2d3748" : "#a5b4fc"};
+  font-size: 24px;
+  font-weight: 300;
+  cursor: ${({ $disabled }) => $disabled ? "default" : "pointer"};
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
   font-family: inherit;
-  background: rgba(255, 255, 255, 0.7);
-  color: rgb(85, 85, 85);
-  font-weight: 400;
-  box-shadow: none;
-  transition: 0.2s;
+  flex-shrink: 0;
+  line-height: 1;
 
-  &.clicked {
-    background: rgb(212, 80, 10) !important;
-    color: white !important;
-    font-weight: 700 !important;
-    box-shadow: rgba(212, 80, 10, 0.3) 0px 4px 12px !important;
+  &:active {
+    background: ${({ $disabled }) => $disabled ? "transparent" : "rgba(99,102,241,0.12)"};
   }
 `;
 
-const ElaborationBillingWrapper = styled.div`
-  padding: 16px 20px;
+const MonthLabel = styled.div`
+  flex: 1;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: #f0f4ff;
+  letter-spacing: 0.2px;
 `;
 
-const ElaborationBilling = styled.div`
-  background: white;
+// ── Layout ────────────────────────────────────────────────────────────────────
+
+const Page = styled.div`
+  padding: 12px 0 24px;
+`;
+
+const Section = styled.div`
+  margin: 0 16px 14px;
+  background: #161b27;
   border-radius: 20px;
   padding: 16px;
-  box-shadow: rgba(0, 0, 0, 0.06) 0px 4px 20px;
+  border: 1px solid rgba(255,255,255,0.04);
+  box-shadow: 0 2px 20px rgba(0,0,0,0.25);
 `;
 
-const ElaborationBillingHeaderWrapper = styled.div`
+const SectionHeader = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
-
-  .elaboration-billings-header {
-    font-weight: 700;
-    font-size: 18px;
-    color: rgb(45, 45, 45);
-  }
+  margin-bottom: 16px;
 `;
 
-const ElaborationBillingDataWrapper = styled.div`
-  color: rgb(187, 187, 187);
+const SectionTitle = styled.div`
+  font-weight: 700;
+  font-size: 15px;
+  color: #f0f4ff;
 `;
 
-const EmptyContent = styled.div`
+const ActionBtn = styled.button`
+  background: rgba(99,102,241,0.14);
+  border: none;
+  color: #a5b4fc;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 5px 12px;
+  border-radius: 10px;
+  transition: background 0.15s;
+  &:active { background: rgba(99,102,241,0.25); }
+`;
+
+const EmptyState = styled.div`
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  text-align: center;
-  padding: 24px 0;
-
-  .no-expenses-icon {
-    font-size: 55px;
-  }
+  padding: 24px 0 12px;
 `;
 
-const TransactionRow = styled.div`
+// ── Donut grid ────────────────────────────────────────────────────────────────
+
+const DonutGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+`;
+
+const DonutCard = styled.div`
   display: flex;
+  flex-direction: column;
   align-items: center;
-  padding: 10px 0;
-  border-bottom: 1px solid #f5f0ea;
-  gap: 12px;
-
-  &:last-child {
-    border-bottom: none;
-  }
-`;
-
-const TransactionIcon = styled.div`
-  width: 38px;
-  height: 38px;
+  gap: 3px;
+  padding: 8px 4px 6px;
+  background: ${({ $status }) =>
+    $status === "over" ? "rgba(244,114,182,0.06)" :
+    $status === "warn" ? "rgba(251,191,36,0.06)" :
+    "rgba(255,255,255,0.03)"};
   border-radius: 12px;
-  background: ${({ $type }) => $type === "income" ? "#e8f8f0" : "#fef0ea"};
+  border: 1px solid ${({ $status }) =>
+    $status === "over" ? "rgba(244,114,182,0.18)" :
+    $status === "warn" ? "rgba(251,191,36,0.18)" :
+    "rgba(255,255,255,0.04)"};
+`;
+
+const DonutWrapper = styled.div`
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
   flex-shrink: 0;
 `;
 
-const TransactionInfo = styled.div`
+const DonutInner = styled.div`
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+`;
+
+const DonutEmoji = styled.span`
+  font-size: 12px;
+`;
+
+const DonutLabel = styled.div`
+  font-size: 10px;
+  font-weight: 600;
+  color: #c7d2e8;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+  padding: 0 2px;
+`;
+
+const DonutAmountRow = styled.div`
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  justify-content: center;
+`;
+
+const DonutSpent = styled.span`
+  font-size: 10px;
+  font-weight: 700;
+  color: ${({ $status }) =>
+    $status === "over" ? "#f472b6" :
+    $status === "warn" ? "#fbbf24" :
+    "#a5b4fc"};
+`;
+
+const DonutLimit = styled.span`
+  font-size: 9px;
+  color: #4a5568;
+`;
+
+const DonutPct = styled.span`
+  font-size: 10px;
+  font-weight: 700;
+  color: ${({ $status }) =>
+    $status === "over" ? "#f472b6" :
+    $status === "warn" ? "#fbbf24" :
+    "#6b7aaa"};
+`;
+
+// ── Recent expenses pop section ───────────────────────────────────────────────
+
+const RecentSection = styled.div`
+  margin: 0 16px 14px;
+  background: linear-gradient(145deg, #1e1535 0%, #1a1f35 100%);
+  border-radius: 20px;
+  padding: 18px 16px;
+  border: 1px solid rgba(139,92,246,0.2);
+  box-shadow: 0 4px 24px rgba(99,102,241,0.12), 0 2px 8px rgba(0,0,0,0.3);
+`;
+
+const RecentHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+`;
+
+const RecentTitle = styled.div`
+  font-weight: 700;
+  font-size: 15px;
+  color: #e0d7ff;
+`;
+
+const RecentAllBtn = styled.button`
+  background: rgba(139,92,246,0.18);
+  border: none;
+  color: #c4b5fd;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 5px 12px;
+  border-radius: 10px;
+  transition: background 0.15s;
+  &:active { background: rgba(139,92,246,0.3); }
+`;
+
+const RecentRow = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: ${({ $last }) => $last ? "none" : "1px solid rgba(255,255,255,0.05)"};
+`;
+
+const RecentIcon = styled.div`
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+`;
+
+const RecentInfo = styled.div`
   flex: 1;
   min-width: 0;
 `;
 
-const TransactionTitle = styled.div`
+const RecentTxTitle = styled.div`
   font-weight: 600;
   font-size: 14px;
-  color: #2d2d2d;
+  color: #e8e0ff;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 `;
 
-const TransactionDescription = styled.div`
-  font-size: 12px;
-  font-weight: 400;
-  color: #888;
-  margin-top: 1px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-`;
-
-const TransactionMeta = styled.div`
+const RecentMeta = styled.div`
   font-size: 11px;
-  color: #aaa;
+  color: rgba(200,190,255,0.45);
   margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 `;
 
-const TransactionAmount = styled.div`
+const RecentAmount = styled.div`
   font-weight: 700;
-  font-size: 15px;
-  color: ${({ $type }) => $type === "income" ? "#27ae60" : "#d4500a"};
+  font-size: 14px;
+  color: #f472b6;
   flex-shrink: 0;
 `;
 
-const ShowAllButton = styled.button`
-  background: none;
+// ── Budget modal ──────────────────────────────────────────────────────────────
+
+const ModalOverlay = styled.div`
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.75);
+  z-index: 500;
+  display: flex;
+  align-items: flex-end;
+`;
+
+const ModalSheet = styled.div`
+  background: #161b27;
+  border-radius: 24px 24px 0 0;
+  width: 100%;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid rgba(99,102,241,0.2);
+`;
+
+const ModalHeader = styled.div`
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 18px 20px 12px;
+  font-weight: 700;
+  font-size: 17px;
+  color: #f0f4ff;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+`;
+
+const CloseBtn = styled.button`
+  background: rgba(255,255,255,0.08);
   border: none;
-  color: #d4500a;
-  font-size: 13px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
   cursor: pointer;
+  font-size: 13px;
+  color: #8b9dc3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-family: inherit;
 `;
 
-const CategoryBreakdownWrapper = styled.div`
-  padding: 0 20px 16px;
+const ModalBody = styled.div`
+  overflow-y: auto;
+  padding: 12px 20px;
+  flex: 1;
 `;
 
-const CategoryBreakdownCard = styled.div`
-  background: white;
-  border-radius: 20px;
-  padding: 16px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
-`;
-
-const CategoryBreakdownHeader = styled.div`
-  font-weight: 700;
-  font-size: 16px;
-  margin-bottom: 12px;
-  color: #2d2d2d;
-`;
-
-const CategoryRow = styled.div`
-  margin-bottom: 10px;
-
-  &:last-child {
-    margin-bottom: 0;
-  }
-`;
-
-const CategoryRowLabel = styled.div`
+const BudgetRow = styled.div`
   display: flex;
+  align-items: center;
   justify-content: space-between;
-  margin-bottom: 4px;
-  font-size: 13px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  &:last-child { border-bottom: none; }
 `;
 
-const CategoryLabel = styled.span`
-  color: #555;
+const BudgetLabel = styled.div`
+  font-size: 14px;
+  color: #c7d2e8;
+  flex: 1;
 `;
 
-const CategoryAmount = styled.span`
-  font-weight: 600;
-  color: #d4500a;
+const BudgetInput = styled.input`
+  width: 100px;
+  padding: 7px 10px;
+  border: 2px solid rgba(99,102,241,0.2);
+  border-radius: 10px;
+  font-size: 14px;
+  font-family: inherit;
+  text-align: left;
+  outline: none;
+  color: #f0f4ff;
+  background: #1e2535;
+  direction: ltr;
+
+  &:focus { border-color: #6366f1; }
 `;
 
-const ProgressBarBg = styled.div`
-  background: #f0e8e0;
-  border-radius: 8px;
-  height: 6px;
-  overflow: hidden;
+const ModalFooter = styled.div`
+  padding: 14px 20px calc(14px + env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(255,255,255,0.06);
 `;
 
-const ProgressBarFill = styled.div`
-  height: 100%;
-  background: linear-gradient(90deg, #d4500a, #e8722a);
-  border-radius: 8px;
-  transition: width 0.5s ease;
+const SaveBtn = styled.button`
+  width: 100%;
+  padding: 14px;
+  border: none;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: white;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  font-family: inherit;
+  box-shadow: 0 4px 16px rgba(99,102,241,0.35);
 `;

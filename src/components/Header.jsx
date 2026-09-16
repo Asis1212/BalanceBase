@@ -1,47 +1,61 @@
 import styled from "styled-components";
 
-function Header({cards, selectedMonth, setSelectedMonth}) {
-  const getLastYearMonths = () => {
-    const monthList = [];
-    for (let i = 0; i <= 11; i++) {
-      const date = new Date();
-      date.setMonth(date.getMonth() - i);
-      monthList.push(
-        new Intl.DateTimeFormat("he-IL", {
-          month: "long",
-          year: "numeric",
-        }).format(date),
-      );
-    }
-    return monthList;
-  }
-
-  const monthsList = getLastYearMonths();
+function Header({ cards, onProfileClick }) {
+  const balance = cards[2];
+  const isPositive = balance.val >= 0;
 
   return (
     <HeaderContainer>
-      <LeftBubble />
-      <RightBubble />
-      <HeaderDiv>
-        <div className="title">
-          <span>תקציב משפחתי</span>
-          <span className="current-time">{selectedMonth}</span>
-        </div>
-        <select className="custom-select" onChange={(e) => setSelectedMonth(e.target.value)}>
-          {monthsList.map((month, index) => (
-            <option key={index}>{month}</option>
-          ))}
-        </select>
-      </HeaderDiv>
-      <BoxWrapper>
-        {cards.map((item, index) => (
-          <div className="box" key={index}>
-            <div>{item.icon}</div>
-            <div style={{ color: item.color }}>{item.val} ₪</div>
-            <div>{item.label}</div>
-          </div>
-        ))}
-      </BoxWrapper>
+      <GlowOrb $positive={isPositive} />
+
+      <HeaderTop>
+        <LogoGroup>
+          <LogoIcon>
+            <svg width="34" height="34" viewBox="0 0 34 34" fill="none">
+              <circle cx="17" cy="17" r="17" fill="url(#logoGrad)" />
+              <path d="M10 22 L17 11 L24 22" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none" opacity="0.9"/>
+              <path d="M13 18 L21 18" stroke="white" strokeWidth="1.8" strokeLinecap="round" opacity="0.6"/>
+              <circle cx="17" cy="25" r="2" fill="white" opacity="0.85"/>
+              <defs>
+                <linearGradient id="logoGrad" x1="0" y1="0" x2="34" y2="34" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="#6366f1"/>
+                  <stop offset="100%" stopColor="#a855f7"/>
+                </linearGradient>
+              </defs>
+            </svg>
+          </LogoIcon>
+          <TitleGroup>
+            <AppName>כַּספּוֹן</AppName>
+            <SubTitle>ניהול תקציב משפחתי</SubTitle>
+          </TitleGroup>
+        </LogoGroup>
+        <ProfileBtn onClick={onProfileClick}>👤</ProfileBtn>
+      </HeaderTop>
+
+      <BalanceSection>
+        <BalanceLabel>מאזן חודשי</BalanceLabel>
+        <BalanceValue $positive={isPositive}>
+          {isPositive ? "+" : ""}{balance.val.toLocaleString("he-IL")} ₪
+        </BalanceValue>
+      </BalanceSection>
+
+      <StatsRow>
+        <StatChip>
+          <StatIcon>📈</StatIcon>
+          <StatContent>
+            <StatAmount style={{ color: "#22d3a5" }}>{cards[0].val.toLocaleString("he-IL")} ₪</StatAmount>
+            <StatLabel>הכנסות</StatLabel>
+          </StatContent>
+        </StatChip>
+        <StatDivider />
+        <StatChip>
+          <StatIcon>📉</StatIcon>
+          <StatContent>
+            <StatAmount style={{ color: "#f472b6" }}>{cards[1].val.toLocaleString("he-IL")} ₪</StatAmount>
+            <StatLabel>הוצאות</StatLabel>
+          </StatContent>
+        </StatChip>
+      </StatsRow>
     </HeaderContainer>
   );
 }
@@ -49,80 +63,158 @@ function Header({cards, selectedMonth, setSelectedMonth}) {
 export default Header;
 
 const HeaderContainer = styled.div`
-font-size: 15px;
-color: #fff;
-background: linear-gradient(
-  135deg,
-  rgb(212, 80, 10) 0%,
-  rgb(232, 114, 42) 100%
-  );
-  padding: 24px 20px 32px;
-  border-radius: 0px 0px 32px 32px;
-  box-shadow: rgba(212, 80, 10, 0.3) 0px 8px 32px;
+  background: linear-gradient(160deg, #161b27 0%, #0d1117 100%);
+  padding: 52px 20px 24px;
+  border-radius: 0 0 32px 32px;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.5);
   position: relative;
   overflow: hidden;
+  border-bottom: 1px solid rgba(99, 102, 241, 0.15);
 `;
 
-const LeftBubble = styled.div`
+const GlowOrb = styled.div`
   position: absolute;
-  top: -40px;
-  left: -40px;
-  width: 160px;
-  height: 160px;
-  background:rgba(255,255,255,0.06);
+  top: -60px;
+  right: -60px;
+  width: 220px;
+  height: 220px;
   border-radius: 50%;
+  background: ${({ $positive }) =>
+    $positive
+      ? "radial-gradient(circle, rgba(34,211,165,0.13) 0%, transparent 70%)"
+      : "radial-gradient(circle, rgba(244,114,182,0.13) 0%, transparent 70%)"};
+  pointer-events: none;
 `;
 
-const RightBubble = styled.div`
-  position: absolute;
-  bottom: -20px;
-  right: -20px;
-  width: 100px;
-  height: 100px;
-  background:rgba(255,255,255,0.06);
+const ProfileBtn = styled.button`
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: #f0f4ff;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+
+  &:active {
+    background: rgba(99,102,241,0.2);
+  }
 `;
 
-const HeaderDiv = styled.div`
+const HeaderTop = styled.div`
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
   position: relative;
   z-index: 1;
-
-  .title {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-
-    .current-time {
-      font-size: 12px;
-    }
-  }
-
-  .custom-select {
-    height: 25px;
-    padding-inline: 5px;
-    background-color: transparent;
-    border: 1px solid #ffffff;
-    border-radius: 10px;
-    color: white;
-    outline: none;
-  }
 `;
 
-const BoxWrapper = styled.div`
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+const LogoGroup = styled.div`
+  display: flex;
+  align-items: center;
   gap: 10px;
+`;
 
-  .box {
-    background: rgba(255, 255, 255, 0.15);
-    backdrop-filter: blur(8px);
-    border-radius: 16px;
-    padding: 12px 10px;
-    text-align: center;
-    border: 1px solid rgba(255, 255, 255, 0.2);
-  }
+const LogoIcon = styled.div`
+  filter: drop-shadow(0 4px 12px rgba(99,102,241,0.5));
+`;
+
+const TitleGroup = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+`;
+
+const AppName = styled.div`
+  font-size: 24px;
+  font-weight: 900;
+  color: #f0f4ff;
+  letter-spacing: 0.5px;
+  line-height: 1.1;
+`;
+
+const SubTitle = styled.div`
+  font-size: 11px;
+  color: #8b9dc3;
+  font-weight: 400;
+  letter-spacing: 0.2px;
+`;
+
+const BalanceSection = styled.div`
+  text-align: center;
+  padding: 4px 0 20px;
+  position: relative;
+  z-index: 1;
+`;
+
+const BalanceLabel = styled.div`
+  font-size: 12px;
+  color: #8b9dc3;
+  font-weight: 500;
+  margin-bottom: 6px;
+  letter-spacing: 0.3px;
+`;
+
+const BalanceValue = styled.div`
+  font-size: 44px;
+  font-weight: 900;
+  letter-spacing: -2px;
+  line-height: 1;
+  color: ${({ $positive }) => $positive ? "#22d3a5" : "#f472b6"};
+  text-shadow: 0 0 40px ${({ $positive }) =>
+    $positive ? "rgba(34,211,165,0.35)" : "rgba(244,114,182,0.35)"};
+`;
+
+const StatsRow = styled.div`
+  display: flex;
+  align-items: stretch;
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(12px);
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
+`;
+
+const StatChip = styled.div`
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+`;
+
+const StatDivider = styled.div`
+  width: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  align-self: stretch;
+`;
+
+const StatIcon = styled.div`
+  font-size: 20px;
+  flex-shrink: 0;
+`;
+
+const StatContent = styled.div`
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+`;
+
+const StatAmount = styled.div`
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+`;
+
+const StatLabel = styled.div`
+  font-size: 11px;
+  color: #8b9dc3;
+  font-weight: 400;
 `;
