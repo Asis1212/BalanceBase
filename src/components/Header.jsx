@@ -1,4 +1,5 @@
 import styled from "styled-components";
+import iconImg from "../assets/icon.png";
 
 function Header({ cards, onProfileClick }) {
   const balance = cards[2];
@@ -11,18 +12,7 @@ function Header({ cards, onProfileClick }) {
       <HeaderTop>
         <LogoGroup>
           <LogoIcon>
-            <svg width="34" height="34" viewBox="0 0 34 34" fill="none">
-              <circle cx="17" cy="17" r="17" fill="url(#logoGrad)" />
-              <path d="M10 22 L17 11 L24 22" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none" opacity="0.9"/>
-              <path d="M13 18 L21 18" stroke="white" strokeWidth="1.8" strokeLinecap="round" opacity="0.6"/>
-              <circle cx="17" cy="25" r="2" fill="white" opacity="0.85"/>
-              <defs>
-                <linearGradient id="logoGrad" x1="0" y1="0" x2="34" y2="34" gradientUnits="userSpaceOnUse">
-                  <stop offset="0%" stopColor="#6366f1"/>
-                  <stop offset="100%" stopColor="#a855f7"/>
-                </linearGradient>
-              </defs>
-            </svg>
+            <img src={iconImg} alt="Finio" width="34" height="34" style={{ borderRadius: 10 }} />
           </LogoIcon>
           <TitleGroup>
             <AppName>Finio</AppName>
