@@ -1,39 +1,31 @@
-const BASE = '/api';
-
-async function request(method, path, body) {
-  const res = await fetch(`${BASE}${path}`, {
-    method,
-    headers: body ? { 'Content-Type': 'application/json' } : {},
-    body: body ? JSON.stringify(body) : undefined,
+async function request(path, options = {}) {
+  const res = await fetch(path, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options,
   });
-  if (!res.ok) throw new Error(`API ${method} ${path} → ${res.status}`);
+  if (!res.ok) throw new Error(`API error ${res.status}: ${path}`);
   return res.json();
 }
 
 export const api = {
-  // Profile
-  getProfile:  ()       => request('GET',  '/profile'),
-  saveProfile: (data)   => request('PUT',  '/profile', data),
+  getProfile:  ()     => request('/api/profile'),
+  saveProfile: (data) => request('/api/profile', { method: 'PUT', body: JSON.stringify(data) }),
 
-  // Categories
-  getCategories:    ()     => request('GET',    '/categories'),
-  addCategory:      (cat)  => request('POST',   '/categories', cat),
-  updateCategory:   (cat)  => request('PUT',    `/categories/${cat.id}`, cat),
-  deleteCategory:   (id)   => request('DELETE', `/categories/${id}`),
+  getCategories:  ()    => request('/api/categories'),
+  addCategory:    (cat) => request('/api/categories',        { method: 'POST',   body: JSON.stringify(cat) }),
+  updateCategory: (cat) => request(`/api/categories/${cat.id}`, { method: 'PUT', body: JSON.stringify(cat) }),
+  deleteCategory: (id)  => request(`/api/categories/${id}`,  { method: 'DELETE' }),
 
-  // Budgets
-  getBudgets:  ()       => request('GET', '/budgets'),
-  saveBudgets: (data)   => request('PUT', '/budgets', data),
+  getBudgets:  ()     => request('/api/budgets'),
+  saveBudgets: (data) => request('/api/budgets', { method: 'PUT', body: JSON.stringify(data) }),
 
-  // Transactions
-  getTransactions:    ()    => request('GET',    '/transactions'),
-  addTransaction:     (tx)  => request('POST',   '/transactions', tx),
-  updateTransaction:  (tx)  => request('PUT',    `/transactions/${tx.id}`, tx),
-  deleteTransaction:  (id)  => request('DELETE', `/transactions/${id}`),
+  getTransactions:   ()   => request('/api/transactions'),
+  addTransaction:    (tx) => request('/api/transactions',        { method: 'POST',   body: JSON.stringify(tx) }),
+  updateTransaction: (tx) => request(`/api/transactions/${tx.id}`, { method: 'PUT', body: JSON.stringify(tx) }),
+  deleteTransaction: (id) => request(`/api/transactions/${id}`,  { method: 'DELETE' }),
 
-  // Recurring templates
-  getRecurring:          ()    => request('GET',    '/recurring'),
-  addRecurring:          (t)   => request('POST',   '/recurring', t),
-  updateRecurring:       (t)   => request('PUT',    `/recurring/${t.id}`, t),
-  deleteRecurring:       (id)  => request('DELETE', `/recurring/${id}`),
+  getRecurring:    ()  => request('/api/recurring'),
+  addRecurring:    (t) => request('/api/recurring',        { method: 'POST',   body: JSON.stringify(t) }),
+  updateRecurring: (t) => request(`/api/recurring/${t.id}`, { method: 'PUT',   body: JSON.stringify(t) }),
+  deleteRecurring: (id) => request(`/api/recurring/${id}`, { method: 'DELETE' }),
 };

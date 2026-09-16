@@ -20,6 +20,7 @@ function Body({
   visibleTransactions,
   categories, setCategories,
   profile, setProfile,
+  clearAllData,
 }) {
   const [editTx, setEditTx] = useState(null);
 
@@ -168,8 +169,7 @@ function Body({
           setProfile={setProfile}
           transactions={visibleTransactions}
           categories={categories}
-          setTransactions={setTransactions}
-          setRecurringTemplates={setRecurringTemplates}
+          clearAllData={clearAllData}
         />
       )}
     </BodyContainer>

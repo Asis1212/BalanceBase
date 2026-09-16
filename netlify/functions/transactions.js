@@ -1,7 +1,13 @@
 import { db } from '../../db/index.js';
 import { transactions } from '../../db/schema.js';
 import { eq } from 'drizzle-orm';
-import { json } from './_shared/helpers.js';
+
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
 
 function toClient(row) {
   return {
@@ -17,11 +23,7 @@ function toClient(row) {
   };
 }
 
-export default async (req) => {
-  const url = new URL(req.url);
-  const id = url.pathname.split('/').pop();
-  const isCollection = url.pathname === '/api/transactions';
-
+export default async (req, context) => {
   if (req.method === 'GET') {
     const rows = await db.select().from(transactions).orderBy(transactions.date);
     return json(rows.map(toClient));
@@ -40,11 +42,25 @@ export default async (req) => {
       paymentMethod: body.paymentMethod ?? '',
       recurring:     body.recurring ?? false,
       createdAt:     new Date(),
+    }).onConflictDoUpdate({
+      target: transactions.id,
+      set: {
+        type:          body.type,
+        amount:        String(body.amount),
+        categoryId:    body.category,
+        date:          body.date,
+        description:   body.description ?? '',
+        person:        body.person ?? null,
+        paymentMethod: body.paymentMethod ?? '',
+        recurring:     body.recurring ?? false,
+      },
     });
-    return json(toClient({ ...body, categoryId: body.category, amount: String(body.amount) }), 201);
+    return json(toClient({ ...body, categoryId: body.category }), 201);
   }
 
-  if (req.method === 'PUT' && !isCollection) {
+  const id = context?.params?.id ?? new URL(req.url).pathname.split('/').pop();
+
+  if (req.method === 'PUT') {
     const body = await req.json();
     await db.update(transactions).set({
       type:          body.type,
@@ -59,7 +75,7 @@ export default async (req) => {
     return json(toClient({ ...body, categoryId: body.category }));
   }
 
-  if (req.method === 'DELETE' && !isCollection) {
+  if (req.method === 'DELETE') {
     await db.delete(transactions).where(eq(transactions.id, id));
     return json({ ok: true });
   }

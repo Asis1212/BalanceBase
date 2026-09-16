@@ -1,32 +1,60 @@
 import { db } from '../../db/index.js';
 import { categories } from '../../db/schema.js';
 import { eq } from 'drizzle-orm';
-import { json } from './_shared/helpers.js';
 
-export default async (req) => {
-  const url = new URL(req.url);
-  const id = url.pathname.split('/').pop();
-  const isCollection = url.pathname === '/api/categories';
+function json(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
 
+function toClient(row) {
+  return {
+    id:        row.id,
+    label:     row.label,
+    emoji:     row.emoji,
+    type:      row.type,
+    isDefault: row.isDefault,
+    sortOrder: row.sortOrder,
+  };
+}
+
+export default async (req, context) => {
   if (req.method === 'GET') {
     const rows = await db.select().from(categories).orderBy(categories.sortOrder);
-    return json(rows);
+    return json(rows.map(toClient));
   }
 
   if (req.method === 'POST') {
     const body = await req.json();
-    await db.insert(categories).values(body);
-    return json(body, 201);
+    await db.insert(categories).values({
+      id:        body.id,
+      label:     body.label,
+      emoji:     body.emoji,
+      type:      body.type,
+      isDefault: body.isDefault ?? false,
+      sortOrder: body.sortOrder ?? 99,
+    }).onConflictDoUpdate({
+      target: categories.id,
+      set: { label: body.label, emoji: body.emoji, type: body.type },
+    });
+    return json(toClient(body), 201);
   }
 
-  if (req.method === 'PUT' && !isCollection) {
+  const id = context?.params?.id ?? new URL(req.url).pathname.split('/').pop();
+
+  if (req.method === 'PUT') {
     const body = await req.json();
-    const { id: _id, ...rest } = body;
-    await db.update(categories).set(rest).where(eq(categories.id, id));
-    return json({ ...rest, id });
+    await db.update(categories).set({
+      label: body.label,
+      emoji: body.emoji,
+      type:  body.type,
+    }).where(eq(categories.id, id));
+    return json({ ...body, id });
   }
 
-  if (req.method === 'DELETE' && !isCollection) {
+  if (req.method === 'DELETE') {
     await db.delete(categories).where(eq(categories.id, id));
     return json({ ok: true });
   }

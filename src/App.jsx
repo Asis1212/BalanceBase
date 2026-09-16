@@ -4,56 +4,28 @@ import styled from "styled-components";
 import Header from "./components/Header";
 import Body from "./components/Body";
 import Navbar from "./components/Navbar";
-import { getCycleLabel, buildCycleList, getCycleStartIso, isInCycle } from "./utils/monthUtils";
+import { getCycleLabel, getCycleStartIso, isInCycle } from "./utils/monthUtils";
 import { api } from "./utils/api";
-
-export const DEFAULT_CATEGORIES = [
-  { id: "salary",        label: "משכורת",       emoji: "💼", type: "income",   isDefault: true, sortOrder: 0  },
-  { id: "present",       label: "מתנה",          emoji: "🎁", type: "income",   isDefault: true, sortOrder: 1  },
-  { id: "other_in",      label: "אחר",           emoji: "➕", type: "income",   isDefault: true, sortOrder: 2  },
-  { id: "food",          label: "מזון וקניות",   emoji: "🛒", type: "expense",  isDefault: true, sortOrder: 3  },
-  { id: "housing",       label: "דיור ושכירות",  emoji: "🏠", type: "expense",  isDefault: true, sortOrder: 4  },
-  { id: "transport",     label: "דלק ותחבורה",  emoji: "🚗", type: "expense",  isDefault: true, sortOrder: 5  },
-  { id: "education",     label: "לימודים",       emoji: "📚", type: "expense",  isDefault: true, sortOrder: 6  },
-  { id: "technology",    label: "טכנולוגיה",     emoji: "🤖", type: "expense",  isDefault: true, sortOrder: 7  },
-  { id: "entertainment", label: "בילויים",       emoji: "🎉", type: "expense",  isDefault: true, sortOrder: 8  },
-  { id: "pharmacy",      label: "פארם",          emoji: "🏥", type: "expense",  isDefault: true, sortOrder: 9  },
-  { id: "health",        label: "בריאות",        emoji: "💊", type: "expense",  isDefault: true, sortOrder: 10 },
-  { id: "shopping",      label: "שופינג",        emoji: "🛍️", type: "expense",  isDefault: true, sortOrder: 11 },
-  { id: "subscription",  label: "מנויים",        emoji: "🔔", type: "expense",  isDefault: true, sortOrder: 12 },
-  { id: "gym",           label: "חדר-כושר",      emoji: "🏋", type: "expense",  isDefault: true, sortOrder: 13 },
-  { id: "events",        label: "אירועים",       emoji: "💍", type: "expense",  isDefault: true, sortOrder: 14 },
-  { id: "savings",       label: "חיסכון",        emoji: "🐷", type: "expense",  isDefault: true, sortOrder: 15 },
-  { id: "other_ex",      label: "אחר",           emoji: "📦", type: "expense",  isDefault: true, sortOrder: 16 },
-];
-
-const DEFAULT_PROFILE = {
-  personOneName:          "אלעד",
-  personTwoName:          "נויה",
-  currency:               "ILS",
-  personOneMonthlyIncome: "",
-  personTwoMonthlyIncome: "",
-  monthCycleDay:          1,
-};
 
 function App() {
   const [pageItem, setPageItem] = useState("dashboard");
   const [toast, setToast]       = useState(null);
   const [loading, setLoading]   = useState(true);
+  const [error, setError]       = useState(null);
 
-  const [profile,             setProfileState]    = useState(DEFAULT_PROFILE);
-  const [categories,          setCategoriesState] = useState(DEFAULT_CATEGORIES);
-  const [budgets,             setBudgetsState]    = useState({});
-  const [transactions,        setTransactions]    = useState([]);
-  const [recurringTemplates,  setRecurring]       = useState([]);
+  const [profile,            setProfileState]    = useState(null);
+  const [categories,         setCategoriesState] = useState([]);
+  const [budgets,            setBudgetsState]    = useState({});
+  const [transactions,       setTransactions]    = useState([]);
+  const [recurringTemplates, setRecurring]       = useState([]);
 
   const [selectedMonth, setSelectedMonth] = useState(
     () => getCycleLabel(new Date().toISOString().slice(0, 10), 1)
   );
 
-  const cycleDay = profile.monthCycleDay ?? 1;
+  const cycleDay = profile?.monthCycleDay ?? 1;
 
-  // ── Bootstrap: load all data from API ──────────────────────────────────────
+  // ── Bootstrap ───────────────────────────────────────────────────────────────
   useEffect(() => {
     Promise.all([
       api.getProfile(),
@@ -62,20 +34,26 @@ function App() {
       api.getTransactions(),
       api.getRecurring(),
     ]).then(([prof, cats, buds, txs, recs]) => {
-      if (prof) setProfileState(prof);
-      if (cats?.length) setCategoriesState(cats);
-      if (buds) setBudgetsState(buds);
-      if (txs)  setTransactions(txs);
-      if (recs) setRecurring(recs);
+      setProfileState(prof);
+      setCategoriesState(cats ?? []);
+      setBudgetsState(buds ?? {});
+      setTransactions(txs ?? []);
+      setRecurring(recs ?? []);
+      if (prof?.monthCycleDay) {
+        setSelectedMonth(getCycleLabel(new Date().toISOString().slice(0, 10), prof.monthCycleDay));
+      }
       setLoading(false);
-    }).catch(() => setLoading(false));
+    }).catch(err => {
+      setError(err.message);
+      setLoading(false);
+    });
   }, []);
 
   // ── Profile ─────────────────────────────────────────────────────────────────
   const handleSetProfile = useCallback((updater) => {
     setProfileState(prev => {
       const next = typeof updater === "function" ? updater(prev) : updater;
-      if (next.monthCycleDay !== prev.monthCycleDay) {
+      if (next.monthCycleDay !== prev?.monthCycleDay) {
         setSelectedMonth(getCycleLabel(new Date().toISOString().slice(0, 10), next.monthCycleDay ?? 1));
       }
       api.saveProfile(next).catch(console.error);
@@ -111,7 +89,7 @@ function App() {
 
   // ── Transactions ────────────────────────────────────────────────────────────
   const addTransaction = useCallback((tx) => {
-    setTransactions(prev => [...prev, tx]);
+    setTransactions(prev => [tx, ...prev]);
     api.addTransaction(tx).catch(console.error);
   }, []);
 
@@ -126,19 +104,11 @@ function App() {
   }, []);
 
   const restoreTransaction = useCallback((tx) => {
-    setTransactions(prev => [...prev, tx]);
+    setTransactions(prev => [tx, ...prev.filter(t => t.id !== tx.id)]);
     api.addTransaction(tx).catch(console.error);
   }, []);
 
-  const setTransactionsAndSync = useCallback((updater) => {
-    setTransactions(prev => {
-      const next = typeof updater === "function" ? updater(prev) : updater;
-      // Used only for clearAllData — bulk delete handled separately
-      return next;
-    });
-  }, []);
-
-  // ── Recurring templates ─────────────────────────────────────────────────────
+  // ── Recurring ───────────────────────────────────────────────────────────────
   const addRecurring = useCallback((t) => {
     setRecurring(prev => [...prev, t]);
     api.addRecurring(t).catch(console.error);
@@ -154,14 +124,18 @@ function App() {
     api.deleteRecurring(id).catch(console.error);
   }, []);
 
-  const setRecurringAndSync = useCallback((updater) => {
-    setRecurring(prev => typeof updater === "function" ? updater(prev) : updater);
-  }, []);
+  // ── Clear all (Profile page) ────────────────────────────────────────────────
+  const clearAllData = useCallback(() => {
+    transactions.forEach(tx => api.deleteTransaction(tx.id).catch(console.error));
+    recurringTemplates.forEach(t => api.deleteRecurring(t.id).catch(console.error));
+    setTransactions([]);
+    setRecurring([]);
+  }, [transactions, recurringTemplates]);
 
-  // ── Visible transactions (real + virtual recurring) ─────────────────────────
+  // ── Visible transactions ────────────────────────────────────────────────────
   const visibleTransactions = useMemo(() => {
     const cycleStartIso = getCycleStartIso(selectedMonth, cycleDay);
-    const virtual = recurringTemplates.map((t) => ({
+    const virtual = recurringTemplates.map(t => ({
       ...t,
       id:                  `recurring-${t.id}-${selectedMonth}`,
       date:                cycleStartIso,
@@ -188,8 +162,18 @@ function App() {
     return (
       <AppShell>
         <LoadingScreen>
-          <LoadingDot />
+          <LoadingSpinner />
           <LoadingText>טוען...</LoadingText>
+        </LoadingScreen>
+      </AppShell>
+    );
+  }
+
+  if (error) {
+    return (
+      <AppShell>
+        <LoadingScreen>
+          <LoadingText style={{ color: "#f472b6" }}>שגיאה: {error}</LoadingText>
         </LoadingScreen>
       </AppShell>
     );
@@ -197,7 +181,7 @@ function App() {
 
   return (
     <AppShell>
-      {toast && <ToastMessage type={toast.type}>{toast.msg}</ToastMessage>}
+      {toast && <ToastMessage $type={toast.type}>{toast.msg}</ToastMessage>}
       {!["add","edit","add-recurring","edit-recurring"].includes(pageItem) && (
         <Header cards={cards} onProfileClick={() => setPageItem("profile")} />
       )}
@@ -213,13 +197,13 @@ function App() {
           budgets={budgets}
           setBudgets={handleSetBudgets}
           transactions={transactions}
-          setTransactions={setTransactionsAndSync}
+          setTransactions={setTransactions}
           addTransaction={addTransaction}
           replaceTransaction={replaceTransaction}
           removeTransaction={removeTransaction}
           restoreTransaction={restoreTransaction}
           recurringTemplates={recurringTemplates}
-          setRecurringTemplates={setRecurringAndSync}
+          setRecurringTemplates={setRecurring}
           addRecurring={addRecurring}
           replaceRecurring={replaceRecurring}
           removeRecurring={removeRecurring}
@@ -228,6 +212,7 @@ function App() {
           setCategories={handleSetCategories}
           profile={profile}
           setProfile={handleSetProfile}
+          clearAllData={clearAllData}
         />
       </ScrollArea>
       <Navbar activePage={pageItem} onPageChange={setPageItem} />
@@ -259,7 +244,7 @@ const ToastMessage = styled.div`
   top: 20px;
   left: 50%;
   transform: translateX(-50%);
-  background: ${({ type }) => type === "error"
+  background: ${({ $type }) => $type === "error"
     ? "linear-gradient(135deg, #f472b6, #e11d48)"
     : "linear-gradient(135deg, #22d3a5, #059669)"};
   color: white;
@@ -267,9 +252,8 @@ const ToastMessage = styled.div`
   border-radius: 24px;
   font-weight: 600;
   font-size: 14px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
   z-index: 1000;
-  animation: fadeIn 0.2s ease;
   white-space: nowrap;
 `;
 
@@ -283,14 +267,13 @@ const LoadingScreen = styled.div`
   background: #0d1117;
 `;
 
-const LoadingDot = styled.div`
+const LoadingSpinner = styled.div`
   width: 40px;
   height: 40px;
   border-radius: 50%;
   border: 3px solid rgba(99,102,241,0.2);
   border-top-color: #6366f1;
   animation: spin 0.8s linear infinite;
-
   @keyframes spin { to { transform: rotate(360deg); } }
 `;
 

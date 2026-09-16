@@ -9,7 +9,7 @@ const CURRENCIES = [
   { val: "EUR", symbol: "€", label: "יורו (€)" },
 ];
 
-function Profile({ profile, setProfile, transactions, categories, setTransactions, setRecurringTemplates }) {
+function Profile({ profile, setProfile, transactions, categories, clearAllData }) {
   const [editingPerson, setEditingPerson] = useState(null);
   const [nameDraft, setNameDraft] = useState("");
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -84,9 +84,8 @@ function Profile({ profile, setProfile, transactions, categories, setTransaction
     });
   };
 
-  const clearAllData = () => {
-    setTransactions([]);
-    setRecurringTemplates([]);
+  const clearAllData_ = () => {
+    clearAllData();
     setShowClearConfirm(false);
   };
 
@@ -336,7 +335,7 @@ function Profile({ profile, setProfile, transactions, categories, setTransaction
             <ConfirmSub>כל העסקאות וההכנסות החוזרות יימחקו לצמיתות</ConfirmSub>
             <ConfirmActions>
               <CancelBtn onClick={() => setShowClearConfirm(false)}>ביטול</CancelBtn>
-              <DeleteConfirmBtn onClick={clearAllData}>מחק הכל</DeleteConfirmBtn>
+              <DeleteConfirmBtn onClick={clearAllData_}>מחק הכל</DeleteConfirmBtn>
             </ConfirmActions>
           </ConfirmSheet>
         </ModalOverlay>
