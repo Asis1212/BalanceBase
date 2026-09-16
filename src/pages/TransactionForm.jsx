@@ -55,7 +55,11 @@ function TransactionForm({ setActivityPage, toast, setToast, addTransaction, edi
     } else {
       addTransaction({ id: crypto.randomUUID(), ...formData });
       showToast("✓ נוסף בהצלחה!");
-      setActivityPage(recurringLocked ? "recurring" : "dashboard");
+      if (recurringLocked || formData.recurring) {
+        setActivityPage("recurring");
+      } else {
+        setActivityPage("dashboard");
+      }
     }
   };
 
@@ -163,12 +167,16 @@ function TransactionForm({ setActivityPage, toast, setToast, addTransaction, edi
             ))}
           </PersonRow>
 
-          <SectionLabel style={{ marginTop: 20 }}>תאריך</SectionLabel>
-          <DateInput
-            type="date"
-            value={formData.date}
-            onChange={e => setFormData(f => ({ ...f, date: e.target.value }))}
-          />
+          {!recurringLocked && (
+            <SectionLabel style={{ marginTop: 20 }}>תאריך</SectionLabel>
+          )}
+          {!recurringLocked && (
+            <DateInput
+              type="date"
+              value={formData.date}
+              onChange={e => setFormData(f => ({ ...f, date: e.target.value }))}
+            />
+          )}
 
           <SectionLabel style={{ marginTop: 20 }}>אמצעי תשלום</SectionLabel>
           <PaymentGrid>
@@ -429,7 +437,7 @@ const DateInput = styled.input`
   border-radius: 12px;
   padding: 12px 14px;
   color: #f0f4ff;
-  font-size: 14px;
+  font-size: 16px;
   font-family: inherit;
   outline: none;
   box-sizing: border-box;

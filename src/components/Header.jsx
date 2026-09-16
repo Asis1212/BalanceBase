@@ -25,7 +25,7 @@ function Header({ cards, onProfileClick }) {
             </svg>
           </LogoIcon>
           <TitleGroup>
-            <AppName>כַּספּוֹן</AppName>
+            <AppName>Finio</AppName>
             <SubTitle>ניהול תקציב משפחתי</SubTitle>
           </TitleGroup>
         </LogoGroup>
