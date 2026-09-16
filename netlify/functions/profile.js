@@ -10,12 +10,12 @@ function json(data, status = 200) {
 
 function toClient(row) {
   return {
-    personOneName:          row.person_one_name,
-    personTwoName:          row.person_two_name,
+    personOneName:          row.personOneName,
+    personTwoName:          row.personTwoName,
     currency:               row.currency,
-    personOneMonthlyIncome: row.person_one_monthly_income ?? '0',
-    personTwoMonthlyIncome: row.person_two_monthly_income ?? '0',
-    monthCycleDay:          row.month_cycle_day ?? 1,
+    personOneMonthlyIncome: row.personOneMonthlyIncome ?? '0',
+    personTwoMonthlyIncome: row.personTwoMonthlyIncome ?? '0',
+    monthCycleDay:          row.monthCycleDay ?? 1,
   };
 }
 
@@ -29,24 +29,24 @@ export default async (req) => {
   if (req.method === 'PUT') {
     const body = await req.json();
     await db.insert(profile).values({
-      id:                       1,
-      person_one_name:          body.personOneName,
-      person_two_name:          body.personTwoName,
-      currency:                 body.currency,
-      person_one_monthly_income: String(body.personOneMonthlyIncome ?? 0),
-      person_two_monthly_income: String(body.personTwoMonthlyIncome ?? 0),
-      month_cycle_day:          body.monthCycleDay ?? 1,
-      updated_at:               new Date(),
+      id:                     1,
+      personOneName:          body.personOneName,
+      personTwoName:          body.personTwoName,
+      currency:               body.currency,
+      personOneMonthlyIncome: String(body.personOneMonthlyIncome ?? 0),
+      personTwoMonthlyIncome: String(body.personTwoMonthlyIncome ?? 0),
+      monthCycleDay:          body.monthCycleDay ?? 1,
+      updatedAt:              new Date(),
     }).onConflictDoUpdate({
       target: profile.id,
       set: {
-        person_one_name:           body.personOneName,
-        person_two_name:           body.personTwoName,
-        currency:                  body.currency,
-        person_one_monthly_income: String(body.personOneMonthlyIncome ?? 0),
-        person_two_monthly_income: String(body.personTwoMonthlyIncome ?? 0),
-        month_cycle_day:           body.monthCycleDay ?? 1,
-        updated_at:                new Date(),
+        personOneName:          body.personOneName,
+        personTwoName:          body.personTwoName,
+        currency:               body.currency,
+        personOneMonthlyIncome: String(body.personOneMonthlyIncome ?? 0),
+        personTwoMonthlyIncome: String(body.personTwoMonthlyIncome ?? 0),
+        monthCycleDay:          body.monthCycleDay ?? 1,
+        updatedAt:              new Date(),
       },
     });
     const rows = await db.select().from(profile).limit(1);
