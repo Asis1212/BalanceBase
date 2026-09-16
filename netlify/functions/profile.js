@@ -2,19 +2,22 @@ import { db } from '../../db/index.js';
 import { profile } from '../../db/schema.js';
 import { json } from './_shared/helpers.js';
 
-const DEFAULT_PROFILE = {
-  personOneName:          'אלעד',
-  personTwoName:          'נויה',
-  currency:               'ILS',
-  personOneMonthlyIncome: '0',
-  personTwoMonthlyIncome: '0',
-  monthCycleDay:          1,
-};
+function toClient(row) {
+  return {
+    personOneName:          row.personOneName,
+    personTwoName:          row.personTwoName,
+    currency:               row.currency,
+    personOneMonthlyIncome: row.personOneMonthlyIncome ?? '0',
+    personTwoMonthlyIncome: row.personTwoMonthlyIncome ?? '0',
+    monthCycleDay:          row.monthCycleDay ?? 1,
+  };
+}
 
 export default async (req) => {
   if (req.method === 'GET') {
     const rows = await db.select().from(profile).limit(1);
-    return json(rows[0] ?? DEFAULT_PROFILE);
+    if (!rows.length) return json({ error: 'Profile not found' }, 404);
+    return json(toClient(rows[0]));
   }
 
   if (req.method === 'PUT') {
@@ -29,7 +32,7 @@ export default async (req) => {
     }
 
     const updated = await db.select().from(profile).limit(1);
-    return json(updated[0]);
+    return json(toClient(updated[0]));
   }
 
   return json({ error: 'Method not allowed' }, 405);
